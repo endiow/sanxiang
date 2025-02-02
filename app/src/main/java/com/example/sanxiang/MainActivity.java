@@ -48,17 +48,22 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity
 {
-    private DatabaseHelper dbHelper;
-    private static final int FILE_PICKER_REQUEST_CODE = 123;
-    private LineChart lineChart;
     private static final int PERMISSION_REQUEST_CODE = 1;
+    private DatabaseHelper dbHelper;
+    private LineChart lineChart;
+    private ActivityResultLauncher<Intent> filePickerLauncher;
 
+    // 初始化界面、设置布局和基本配置
     @Override
     protected void onCreate(Bundle savedInstanceState)
     {
+        // 调用父类的onCreate方法
         super.onCreate(savedInstanceState);
+        // 启用边缘到边缘的显示效果
         EdgeToEdge.enable(this);
+        // 设置Activity的布局
         setContentView(R.layout.activity_main);
+        // 设置系统栏（状态栏和导航栏）的内边距
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) ->
         {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
@@ -66,14 +71,92 @@ public class MainActivity extends AppCompatActivity
             return insets;
         });
 
-        dbHelper = new DatabaseHelper(this);
-        lineChart = findViewById(R.id.lineChart);
-        setupChart();
 
-        // 设置按钮点击事件
+        // 初始化数据库帮助类
+        dbHelper = new DatabaseHelper(this);
+        // 获取图表视图引用
+        lineChart = findViewById(R.id.lineChart);
+        // 设置图表的基本配置
+        setupChart();
+        // 设置所有按钮的点击事件监听器
         setupButtons();
+        // 初始化文件选择器结果处理器
+        filePickerLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> 
+            {
+                if (result.getResultCode() == RESULT_OK)
+                {
+                    Intent data = result.getData();
+                    List<Uri> uris = new ArrayList<>();
+                    
+                    if (data != null)
+                    {
+                        // 处理多选结果
+                        if (data.getClipData() != null)
+                        {
+                            ClipData clipData = data.getClipData();
+                            for (int i = 0; i < clipData.getItemCount(); i++)
+                            {
+                                uris.add(clipData.getItemAt(i).getUri());
+                            }
+                        }
+                        // 处理单选结果
+                        else if (data.getData() != null)
+                        {
+                            uris.add(data.getData());
+                        }
+                        
+                        if (!uris.isEmpty())
+                        {
+                            handleMultipleFileSelection(uris);
+                        }
+                    }
+                }
+            });
     }
 
+    //初始化图表
+    private void setupChart()
+    {
+        // 配置图表
+        lineChart.getDescription().setEnabled(false);
+        lineChart.setTouchEnabled(true);
+        lineChart.setDragEnabled(true);
+        lineChart.setScaleEnabled(true);
+        lineChart.setPinchZoom(true);
+        lineChart.setDrawGridBackground(false);
+        
+        // 调整边距
+        lineChart.setExtraBottomOffset(20f);
+        lineChart.setExtraLeftOffset(10f);
+        lineChart.setExtraRightOffset(25f);  // 增加右边距
+        lineChart.setExtraTopOffset(10f);
+
+        // 配置X轴
+        XAxis xAxis = lineChart.getXAxis();
+        xAxis.setPosition(XAxis.XAxisPosition.BOTTOM);
+        xAxis.setDrawGridLines(false);
+        xAxis.setGranularity(1f);
+        xAxis.setLabelRotationAngle(-30);  // 减小旋转角度
+        xAxis.setTextSize(11f);            // 稍微减小文字大小
+        xAxis.setYOffset(5f);              // 增加Y方向的偏移，让标签往上移
+
+        // 配置Y轴
+        YAxis leftAxis = lineChart.getAxisLeft();
+        leftAxis.setDrawGridLines(true);
+        leftAxis.setTextSize(12f);
+        lineChart.getAxisRight().setEnabled(false);
+
+        // 配置图例
+        lineChart.getLegend().setTextSize(12f);
+        lineChart.getLegend().setFormSize(12f);
+
+        // 更新数据
+        updateChartData();
+    }
+
+    //初始化按钮
     private void setupButtons()
     {
         Button btnImportData = findViewById(R.id.btnImportData);
@@ -82,11 +165,13 @@ public class MainActivity extends AppCompatActivity
         Button btnAdjustPhase = findViewById(R.id.btnAdjustPhase);
 
         btnImportData.setOnClickListener(v -> checkPermissionAndOpenPicker());
-        btnViewData.setOnClickListener(v -> {
+        btnViewData.setOnClickListener(v -> 
+        {
             Intent intent = new Intent(this, UserDataActivity.class);
             startActivity(intent);
         });
-        btnPredict.setOnClickListener(v -> {
+        btnPredict.setOnClickListener(v -> 
+        {
             Intent intent = new Intent(this, PredictionActivity.class);
             startActivity(intent);
         });
@@ -95,13 +180,10 @@ public class MainActivity extends AppCompatActivity
 
     private void checkPermissionAndOpenPicker()
     {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)
         {
             // 如果没有权限，申请权限
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
-                    PERMISSION_REQUEST_CODE);
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, PERMISSION_REQUEST_CODE);
         }
         else
         {
@@ -131,37 +213,18 @@ public class MainActivity extends AppCompatActivity
 
     private void openFilePicker()
     {
-        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        intent.setType("text/*");  // 允许选择所有文本文件
-        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);  // 允许多选
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        startActivityForResult(Intent.createChooser(intent, "选择CSV文件"), FILE_PICKER_REQUEST_CODE);
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data)
-    {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == FILE_PICKER_REQUEST_CODE && resultCode == RESULT_OK)
+        try
         {
-            List<Uri> uris = new ArrayList<>();
-            
-            // 处理多选结果
-            if (data.getClipData() != null)
-            {
-                ClipData clipData = data.getClipData();
-                for (int i = 0; i < clipData.getItemCount(); i++)
-                {
-                    uris.add(clipData.getItemAt(i).getUri());
-                }
-            }
-            // 处理单选结果
-            else if (data.getData() != null)
-            {
-                uris.add(data.getData());
-            }
-
-            handleMultipleFileSelection(uris);
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.setType("text/*");  // 允许选择所有文本文件
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);  // 允许多选
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            filePickerLauncher.launch(Intent.createChooser(intent, "选择CSV文件"));
+        }
+        catch (Exception e)
+        {
+            Toast.makeText(this, "无法打开文件选择器", Toast.LENGTH_SHORT).show();
+            e.printStackTrace();
         }
     }
 
@@ -227,20 +290,12 @@ public class MainActivity extends AppCompatActivity
             }
             else
             {
-                Toast.makeText(this, 
-                    String.format("成功导入 %d/%d 个文件", successCount, totalFiles),
-                    Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, String.format("成功导入 %d/%d 个文件", successCount, totalFiles), Toast.LENGTH_SHORT).show();
             }
 
             // 更新图表
             updateChartData();
         }
-    }
-
-    private void handleAdjustPhase()
-    {
-        // TODO: 实现相位调整功能
-        Toast.makeText(this, "相位调整功能待实现", Toast.LENGTH_SHORT).show();
     }
 
     private void predictNextDayPower()
@@ -318,44 +373,14 @@ public class MainActivity extends AppCompatActivity
                 .show();
     }
 
-    private void setupChart()
+    private void handleAdjustPhase()
     {
-        // 配置图表
-        lineChart.getDescription().setEnabled(false);
-        lineChart.setTouchEnabled(true);
-        lineChart.setDragEnabled(true);
-        lineChart.setScaleEnabled(true);
-        lineChart.setPinchZoom(true);
-        lineChart.setDrawGridBackground(false);
-        
-        // 调整边距
-        lineChart.setExtraBottomOffset(20f);
-        lineChart.setExtraLeftOffset(10f);
-        lineChart.setExtraRightOffset(25f);  // 增加右边距
-        lineChart.setExtraTopOffset(10f);
-
-        // 配置X轴
-        XAxis xAxis = lineChart.getXAxis();
-        xAxis.setPosition(XAxis.XAxisPosition.BOTTOM);
-        xAxis.setDrawGridLines(false);
-        xAxis.setGranularity(1f);
-        xAxis.setLabelRotationAngle(-30);  // 减小旋转角度
-        xAxis.setTextSize(11f);            // 稍微减小文字大小
-        xAxis.setYOffset(5f);              // 增加Y方向的偏移，让标签往上移
-
-        // 配置Y轴
-        YAxis leftAxis = lineChart.getAxisLeft();
-        leftAxis.setDrawGridLines(true);
-        leftAxis.setTextSize(12f);
-        lineChart.getAxisRight().setEnabled(false);
-
-        // 配置图例
-        lineChart.getLegend().setTextSize(12f);
-        lineChart.getLegend().setFormSize(12f);
-
-        // 更新数据
-        updateChartData();
+        // TODO: 实现相位调整功能
+        Toast.makeText(this, "相位调整功能待实现", Toast.LENGTH_SHORT).show();
     }
+
+
+    
 
     private void updateChartData()
     {

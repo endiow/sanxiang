@@ -45,8 +45,7 @@ public class PredictionAdapter extends RecyclerView.Adapter<PredictionAdapter.Vi
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType)
     {
-        View view = LayoutInflater.from(parent.getContext())
-                .inflate(R.layout.item_user_data, parent, false);
+        View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_user_data, parent, false);
         return new ViewHolder(view);
     }
 
@@ -55,14 +54,14 @@ public class PredictionAdapter extends RecyclerView.Adapter<PredictionAdapter.Vi
     {
         PredictionResult prediction = predictions.get(position);
         holder.tvUserInfo.setText(String.format("用户编号：%s  用户名称：%s", 
-                prediction.getUserId(), prediction.getUserName()));
+                                  prediction.getUserId(), prediction.getUserName()));
         holder.tvRouteInfo.setText(String.format("回路编号：%s  线路名称：%s", 
-                prediction.getRouteNumber(), prediction.getRouteName()));
+                                   prediction.getRouteNumber(), prediction.getRouteName()));
         holder.tvPhaseInfo.setText(String.format("相位：%s", prediction.getPhase()));
         holder.tvPowerInfo.setText(String.format("A相电量：%.2f  B相电量：%.2f  C相电量：%.2f",
-                prediction.getPredictedPhaseAPower(),
-                prediction.getPredictedPhaseBPower(),
-                prediction.getPredictedPhaseCPower()));
+                                   prediction.getPredictedPhaseAPower(),
+                                   prediction.getPredictedPhaseBPower(),
+                                   prediction.getPredictedPhaseCPower()));
         
         // 显示所有信息
         holder.tvRouteInfo.setVisibility(View.VISIBLE);

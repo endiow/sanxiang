@@ -62,7 +62,8 @@ public class PredictionActivity extends AppCompatActivity
         EditText etSearch = findViewById(R.id.etSearch);
         Button btnSearch = findViewById(R.id.btnSearch);
         
-        btnSearch.setOnClickListener(v -> {
+        btnSearch.setOnClickListener(v -> 
+        {
             String userId = etSearch.getText().toString();
             adapter.filter(userId);
         });
@@ -96,8 +97,7 @@ public class PredictionActivity extends AppCompatActivity
             totalPhaseC += prediction.getPredictedPhaseCPower();
         }
 
-        double unbalanceRate = UnbalanceCalculator.calculateUnbalanceRate(
-            totalPhaseA, totalPhaseB, totalPhaseC);
+        double unbalanceRate = UnbalanceCalculator.calculateUnbalanceRate(totalPhaseA, totalPhaseB, totalPhaseC);
         String status = UnbalanceCalculator.getUnbalanceStatus(unbalanceRate);
 
         String totalInfo = String.format(
@@ -112,9 +112,11 @@ public class PredictionActivity extends AppCompatActivity
         int end = start + 5;
 
         // 设置文字样式和点击事件
-        ClickableSpan clickableSpan = new ClickableSpan() {
+        ClickableSpan clickableSpan = new ClickableSpan() 
+        {
             @Override
-            public void onClick(@NonNull View view) {
+            public void onClick(@NonNull View view) 
+            {
                 UnbalanceCalculator.showCalculationProcess(
                     PredictionActivity.this,
                     totalPhaseA, totalPhaseB, totalPhaseC
@@ -122,15 +124,15 @@ public class PredictionActivity extends AppCompatActivity
             }
 
             @Override
-            public void updateDrawState(@NonNull TextPaint ds) {
+            public void updateDrawState(@NonNull TextPaint ds) 
+            {
                 ds.setColor(Color.rgb(51, 102, 153));  // 蓝色
                 ds.setUnderlineText(false);
                 ds.setFakeBoldText(true);  // 粗体
             }
         };
 
-        spannableString.setSpan(clickableSpan, start, end, 
-            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        spannableString.setSpan(clickableSpan, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
 
         tvTotalPrediction.setText(spannableString);
         tvTotalPrediction.setMovementMethod(LinkMovementMethod.getInstance());
@@ -139,6 +141,7 @@ public class PredictionActivity extends AppCompatActivity
         adapter.setPredictions(predictions);
     }
 
+    //预测电量函数
     private PredictionResult predictUserPower(List<UserData> historicalData)
     {
         PredictionResult result = new PredictionResult();
@@ -168,29 +171,5 @@ public class PredictionActivity extends AppCompatActivity
         result.setPredictedPhaseCPower(sumC / count);
         
         return result;
-    }
-
-    // 创建可点击的ImageSpan
-    private abstract static class ClickableImageSpan extends ClickableSpan {
-        private final Drawable drawable;
-
-        ClickableImageSpan(Drawable drawable) {
-            this.drawable = drawable;
-        }
-
-        @Override
-        public void updateDrawState(TextPaint ds) {
-            ds.setUnderlineText(false);
-            ds.setColor(Color.BLACK);
-            ds.setStyle(TextPaint.Style.FILL_AND_STROKE);
-            ds.setAlpha(255);
-            ds.setColorFilter(new PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.SRC_IN));
-            ds.drawableState = drawable.getState();
-        }
-
-        @Override
-        public void onClick(View widget) {
-            // Implementation of onClick method
-        }
     }
 } 

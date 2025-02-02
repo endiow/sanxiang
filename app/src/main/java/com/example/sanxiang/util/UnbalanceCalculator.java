@@ -3,8 +3,11 @@ package com.example.sanxiang.util;
 import android.content.Context;
 import androidx.appcompat.app.AlertDialog;
 
-public class UnbalanceCalculator {
-    public static double calculateUnbalanceRate(double phaseA, double phaseB, double phaseC) {
+public class UnbalanceCalculator 
+{
+    //平衡度计算
+    public static double calculateUnbalanceRate(double phaseA, double phaseB, double phaseC) 
+    {
         double avgPower = (phaseA + phaseB + phaseC) / 3.0;
         if (avgPower == 0) return 0;
 
@@ -19,14 +22,16 @@ public class UnbalanceCalculator {
         return (maxDeviation / avgPower) * 100;
     }
 
-    public static String getUnbalanceStatus(double unbalanceRate) {
+    public static String getUnbalanceStatus(double unbalanceRate) 
+    {
         if (unbalanceRate <= 15) return "正常";
         else if (unbalanceRate <= 30) return "轻度不平衡";
         else if (unbalanceRate <= 50) return "中度不平衡";
         else return "严重不平衡";
     }
 
-    public static void showCalculationProcess(Context context, double phaseA, double phaseB, double phaseC) {
+    public static void showCalculationProcess(Context context, double phaseA, double phaseB, double phaseC) 
+    {
         double avgPower = (phaseA + phaseB + phaseC) / 3.0;
         double maxDeviation = Math.max(
             Math.max(
