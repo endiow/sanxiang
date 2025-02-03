@@ -138,6 +138,26 @@ public class DatabaseHelper extends SQLiteOpenHelper
     // 更新date的总电量和平衡度
     private void updateTotalPower(String date, SQLiteDatabase db)
     {
+        // 先删除指定日期的数据
+        String deleteQuery = "DELETE FROM " + TABLE_TOTAL_POWER + " WHERE date = ?";
+        db.execSQL(deleteQuery, new String[]{date});
+
+        // 检查总电量记录数
+        String countQuery = "SELECT COUNT(*) FROM " + TABLE_TOTAL_POWER;
+        Cursor countCursor = db.rawQuery(countQuery, null);
+        countCursor.moveToFirst();
+        int count = countCursor.getInt(0);
+        countCursor.close();
+
+        // 如果记录数达到30，删除最早的记录
+        if (count >= 30)
+        {
+            String deleteOldest = "DELETE FROM " + TABLE_TOTAL_POWER 
+                + " WHERE date = (SELECT date FROM " + TABLE_TOTAL_POWER 
+                + " ORDER BY date ASC LIMIT 1)";
+            db.execSQL(deleteOldest);
+        }
+
         // 计算指定日期的总电量
         String query = "SELECT SUM(phase_a_power) as total_a, "
                 + "SUM(phase_b_power) as total_b, "
@@ -153,23 +173,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
             double totalC = cursor.getDouble(2);
             double unbalanceRate = calculateUnbalanceRate(totalA, totalB, totalC);
 
-            // 检查总电量记录数
-            String countQuery = "SELECT COUNT(*) FROM " + TABLE_TOTAL_POWER;
-            Cursor countCursor = db.rawQuery(countQuery, null);
-            countCursor.moveToFirst();
-            int count = countCursor.getInt(0);
-            countCursor.close();
-
-            // 如果记录数达到30，删除最早的记录
-            if (count >= 30)
-            {
-                String deleteOldest = "DELETE FROM " + TABLE_TOTAL_POWER 
-                    + " WHERE date = (SELECT date FROM " + TABLE_TOTAL_POWER 
-                    + " ORDER BY date ASC LIMIT 1)";
-                db.execSQL(deleteOldest);
-            }
-
-            // 更新或插入新记录
+            // 插入新记录
             ContentValues values = new ContentValues();
             values.put("date", date);
             values.put("total_phase_a", totalA);
@@ -177,7 +181,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
             values.put("total_phase_c", totalC);
             values.put("unbalance_rate", unbalanceRate);
 
-            db.insertWithOnConflict(TABLE_TOTAL_POWER, null, values, SQLiteDatabase.CONFLICT_REPLACE);
+            db.insert(TABLE_TOTAL_POWER, null, values);
         }
         cursor.close();
     }
