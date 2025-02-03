@@ -55,7 +55,12 @@ public class UnbalanceCalculator
             "3. 计算不平衡度：\n" +
             "   不平衡度 = (最大偏差/平均值) × 100%%\n" +
             "   不平衡度 = (%.2f / %.2f) × 100%% = %.2f%%\n\n" +
-            "4. 判定结果：%s",
+            "4. 判定结果：%s\n\n" +
+            "判定标准：\n" +
+            "- 正常（≤15%%）\n" +
+            "- 轻度不平衡（15%% < x ≤ 30%%）\n" +
+            "- 中度不平衡（30%% < x ≤ 50%%）\n" +
+            "- 严重不平衡（> 50%%）",
             phaseA, phaseB, phaseC, avgPower,
             phaseA, avgPower, Math.abs(phaseA - avgPower),
             phaseB, avgPower, Math.abs(phaseB - avgPower),

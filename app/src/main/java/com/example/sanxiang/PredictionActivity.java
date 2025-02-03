@@ -1,25 +1,18 @@
 package com.example.sanxiang;
 
 import android.graphics.Color;
-import android.graphics.PorterDuff;
-import android.graphics.PorterDuffColorFilter;
-import android.graphics.Typeface;
-import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.TextPaint;
 import android.text.method.LinkMovementMethod;
 import android.text.style.ClickableSpan;
-import android.text.style.ForegroundColorSpan;
-import android.text.style.StyleSpan;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -76,10 +69,12 @@ public class PredictionActivity extends AppCompatActivity
         List<String> userIds = dbHelper.getAllUserIds();
         List<PredictionResult> predictions = new ArrayList<>();
         
+        //对每个用户进行预测
         for (String userId : userIds)
         {
             List<UserData> historicalData = dbHelper.getLastTwentyDaysData(userId);
-            if (historicalData.size() >= 3)
+            //至少有7天数据，才进行预测
+            if (historicalData.size() >= 7)
             {
                 PredictionResult prediction = predictUserPower(historicalData);
                 predictions.add(prediction);
@@ -109,7 +104,7 @@ public class PredictionActivity extends AppCompatActivity
         
         SpannableString spannableString = new SpannableString(totalInfo);
         int start = totalInfo.indexOf("三相不平衡度");
-        int end = start + 5;
+        int end = start + 6;
 
         // 设置文字样式和点击事件
         ClickableSpan clickableSpan = new ClickableSpan() 

@@ -14,14 +14,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import android.graphics.Color;
-import android.text.SpannableString;
-import android.text.Spannable;
-import android.text.TextPaint;
-import android.text.method.LinkMovementMethod;
-import android.text.style.ClickableSpan;
-import androidx.annotation.NonNull;
-
 /**
  * 用户数据列表的适配器类
  * 用于在RecyclerView中显示用户数据

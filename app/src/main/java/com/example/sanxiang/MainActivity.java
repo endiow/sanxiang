@@ -7,28 +7,19 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
-import android.text.SpannableString;
-import android.text.Spannable;
-import android.text.TextPaint;
-import android.text.method.LinkMovementMethod;
-import android.text.style.ClickableSpan;
-import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.annotation.NonNull;
 
-import com.example.sanxiang.data.PredictionResult;
 import com.example.sanxiang.data.UserData;
 import com.example.sanxiang.db.DatabaseHelper;
 import com.github.mikephil.charting.charts.LineChart;
@@ -180,6 +171,7 @@ public class MainActivity extends AppCompatActivity
         btnAdjustPhase.setOnClickListener(v -> handleAdjustPhase());
     }
 
+    //-----------------------------------导入数据-----------------------------------
     //检查权限并打开文件选择器
     private void checkPermissionAndOpenPicker()
     {
@@ -320,84 +312,8 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
-    //预测下一天的用电量
-    private void predictNextDayPower()
-    {
-        List<String> userIds = dbHelper.getAllUserIds();
-        List<PredictionResult> predictions = new ArrayList<>();
-        
-        for (String userId : userIds)
-        {
-            List<UserData> historicalData = dbHelper.getLastTwentyDaysData(userId);
-            if (historicalData.size() >= 3)  // 至少需要3天的数据才能预测
-            {
-                PredictionResult prediction = predictUserPower(historicalData);
-                predictions.add(prediction);
-            }
-        }
-        
-        // 显示预测结果
-        showPredictionResults(predictions);
-    }
 
-    //预测用户用电量
-    private PredictionResult predictUserPower(List<UserData> historicalData)
-    {
-        PredictionResult result = new PredictionResult();
-        result.setUserId(historicalData.get(0).getUserId());
-        result.setUserName(historicalData.get(0).getUserName());
-        
-        // 使用简单移动平均法预测
-        double sumA = 0, sumB = 0, sumC = 0;
-        int count = Math.min(7, historicalData.size());  // 使用最近7天的数据
-        
-        for (int i = 0; i < count; i++)
-        {
-            UserData data = historicalData.get(i);
-            sumA += data.getPhaseAPower();
-            sumB += data.getPhaseBPower();
-            sumC += data.getPhaseCPower();
-        }
-        
-        result.setPredictedPhaseAPower(sumA / count);
-        result.setPredictedPhaseBPower(sumB / count);
-        result.setPredictedPhaseCPower(sumC / count);
-        
-        return result;
-    }
-
-    //显示预测结果
-    private void showPredictionResults(List<PredictionResult> predictions)
-    {
-        // 创建预测结果的展示字符串
-        StringBuilder message = new StringBuilder("明日用电量预测：\n\n");
-        double totalA = 0, totalB = 0, totalC = 0;
-        
-        for (PredictionResult prediction : predictions)
-        {
-            message.append(String.format("用户：%s\n", prediction.getUserName()));
-            message.append(String.format("A相：%.2f\n", prediction.getPredictedPhaseAPower()));
-            message.append(String.format("B相：%.2f\n", prediction.getPredictedPhaseBPower()));
-            message.append(String.format("C相：%.2f\n\n", prediction.getPredictedPhaseCPower()));
-            
-            totalA += prediction.getPredictedPhaseAPower();
-            totalB += prediction.getPredictedPhaseBPower();
-            totalC += prediction.getPredictedPhaseCPower();
-        }
-        
-        message.append("总计：\n");
-        message.append(String.format("A相总量：%.2f\n", totalA));
-        message.append(String.format("B相总量：%.2f\n", totalB));
-        message.append(String.format("C相总量：%.2f", totalC));
-        
-        // 显示对话框
-        new AlertDialog.Builder(this)
-                .setTitle("预测结果")
-                .setMessage(message.toString())
-                .setPositiveButton("确定", null)
-                .show();
-    }
-
+    //-----------------------------------相位调整-----------------------------------
     //相位调整
     private void handleAdjustPhase()
     {
@@ -406,6 +322,7 @@ public class MainActivity extends AppCompatActivity
     }
 
 
+    //-----------------------------------更新图表数据-----------------------------------
     //更新图表数据
     private void updateChartData()
     {

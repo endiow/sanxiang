@@ -1,7 +1,6 @@
 package com.example.sanxiang;
 
 import android.graphics.Color;
-import android.graphics.Typeface;
 import android.os.Bundle;
 import android.text.Spannable;
 import android.text.SpannableString;
@@ -25,14 +24,15 @@ import com.example.sanxiang.util.UnbalanceCalculator;
 
 import java.util.List;
 
+// 用户数据显示界面
 public class UserDataActivity extends AppCompatActivity
 {
-    private DatabaseHelper dbHelper;
-    private TextView tvDate;
-    private TextView tvTotalPower;
-    private RecyclerView recyclerView;
-    private UserDataAdapter adapter;
-    private String currentDate;
+    private DatabaseHelper dbHelper;      // 数据库操作类
+    private TextView tvDate;             // 日期显示
+    private TextView tvTotalPower;       // 总电量显示
+    private RecyclerView recyclerView;   // 用户列表
+    private UserDataAdapter adapter;     // 列表适配器
+    private String currentDate;          // 当前显示的日期
 
     @Override
     protected void onCreate(Bundle savedInstanceState)
@@ -40,34 +40,51 @@ public class UserDataActivity extends AppCompatActivity
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_user_data);
 
+        // 初始化数据库和视图
         dbHelper = new DatabaseHelper(this);
-        
+        initViews();
+        setupListeners();
+
+        // 加载最新日期的数据
+        currentDate = dbHelper.getLatestDate();
+        tvDate.setText(currentDate);
+        loadData(currentDate);
+    }
+
+    // 初始化视图组件
+    private void initViews()
+    {
         tvDate = findViewById(R.id.tvDate);
         tvTotalPower = findViewById(R.id.tvTotalPower);
         recyclerView = findViewById(R.id.recyclerView);
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        adapter = new UserDataAdapter();
+        recyclerView.setAdapter(adapter);
+    }
+
+    // 设置监听器
+    private void setupListeners()
+    {
         Button btnPrevDay = findViewById(R.id.btnPrevDay);
         Button btnNextDay = findViewById(R.id.btnNextDay);
         EditText etSearch = findViewById(R.id.etSearch);
         Button btnSearch = findViewById(R.id.btnSearch);
 
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        adapter = new UserDataAdapter();
-        recyclerView.setAdapter(adapter);
-
-        currentDate = dbHelper.getLatestDate();
-        tvDate.setText(currentDate);
-        loadData(currentDate);
-
+        // 前一天按钮
         btnPrevDay.setOnClickListener(v -> loadPrevDay());
+        // 后一天按钮
         btnNextDay.setOnClickListener(v -> loadNextDay());
+        // 搜索按钮
         btnSearch.setOnClickListener(v -> 
         {
             String userId = etSearch.getText().toString();
             adapter.filter(userId);
         });
         
+        // 日期输入完成监听
         tvDate.setOnEditorActionListener((v, actionId, event) -> 
         {
+            // 当用户点击软键盘上的"完成"、"下一步"或"回车"键时触发
             if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE || 
                 actionId == android.view.inputmethod.EditorInfo.IME_ACTION_NEXT ||
                 (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ENTER))
@@ -82,8 +99,10 @@ public class UserDataActivity extends AppCompatActivity
             return false;
         });
 
+        // 日期输入框失去焦点监听
         tvDate.setOnFocusChangeListener((v, hasFocus) -> 
         {
+            // 当输入框失去焦点时触发（比如用户点击了界面其他地方）
             if (!hasFocus)
             {
                 String searchDate = tvDate.getText().toString().trim();
@@ -95,6 +114,7 @@ public class UserDataActivity extends AppCompatActivity
         });
     }
 
+    // 验证日期格式
     private boolean isValidDateFormat(String date)
     {
         String regex = "\\d{4}-\\d{2}-\\d{2}";
@@ -120,6 +140,7 @@ public class UserDataActivity extends AppCompatActivity
         }
     }
 
+    // 加载指定日期的数据
     private void loadData(String date)
     {
         if (date != null)
@@ -127,6 +148,7 @@ public class UserDataActivity extends AppCompatActivity
             currentDate = date;
             tvDate.setText(date);
             
+            // 获取并显示总电量和用户数据
             double[] totalPower = dbHelper.getTotalPowerByDate(date);
             if (totalPower != null)
             {
@@ -145,16 +167,19 @@ public class UserDataActivity extends AppCompatActivity
         }
     }
 
+    // 显示总电量和不平衡度信息
     private void displayTotalPower(double[] totalPower)
     {
         double unbalanceRate = totalPower[3];
         String status = UnbalanceCalculator.getUnbalanceStatus(unbalanceRate);
 
+        // 格式化显示文本
         String powerInfo = String.format(
             "三相总电量：\nA相：%.2f\nB相：%.2f\nC相：%.2f\n三相不平衡度：%.2f%% (%s)",
             totalPower[0], totalPower[1], totalPower[2], unbalanceRate, status
         );
         
+        // 设置不平衡度可点击
         SpannableString spannableString = new SpannableString(powerInfo);
         int start = powerInfo.indexOf("三相不平衡度");
         int end = start + 6;
@@ -180,11 +205,11 @@ public class UserDataActivity extends AppCompatActivity
         };
         
         spannableString.setSpan(clickableSpan, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-        
         tvTotalPower.setText(spannableString);
         tvTotalPower.setMovementMethod(LinkMovementMethod.getInstance());
     }
 
+    // 加载前一天数据
     private void loadPrevDay()
     {
         String prevDate = dbHelper.getPrevDate(currentDate);
@@ -198,6 +223,7 @@ public class UserDataActivity extends AppCompatActivity
         }
     }
 
+    // 加载后一天数据
     private void loadNextDay()
     {
         String nextDate = dbHelper.getNextDate(currentDate);
