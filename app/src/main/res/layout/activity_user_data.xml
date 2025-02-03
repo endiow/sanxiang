@@ -84,6 +84,13 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="搜索"/>
+
+        <Button
+            android:id="@+id/btnOldData"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="旧数据"/>
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView

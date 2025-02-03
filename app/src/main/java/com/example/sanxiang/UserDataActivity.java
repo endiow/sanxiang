@@ -1,8 +1,11 @@
 package com.example.sanxiang;
 
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.ParcelFileDescriptor;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.TextPaint;
@@ -15,6 +18,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -22,7 +26,12 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.example.sanxiang.data.UserData;
 import com.example.sanxiang.db.DatabaseHelper;
 import com.example.sanxiang.util.UnbalanceCalculator;
+import com.example.sanxiang.util.CsvHelper;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.List;
 
 public class UserDataActivity extends AppCompatActivity
@@ -60,6 +69,7 @@ public class UserDataActivity extends AppCompatActivity
         Button btnNextDay = findViewById(R.id.btnNextDay);
         EditText etSearch = findViewById(R.id.etSearch);
         Button btnSearch = findViewById(R.id.btnSearch);
+        Button btnOldData = findViewById(R.id.btnOldData);
 
         // 设置RecyclerView
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
@@ -79,6 +89,7 @@ public class UserDataActivity extends AppCompatActivity
             String userId = etSearch.getText().toString();
             adapter.filter(userId);
         });
+        btnOldData.setOnClickListener(v -> showOldDataDialog());
         
         // 设置日期输入完成事件
         tvDate.setOnFocusChangeListener((v, hasFocus) -> 
@@ -229,6 +240,142 @@ public class UserDataActivity extends AppCompatActivity
         else
         {
             Toast.makeText(this, "已经是最新的数据", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * 显示旧数据操作对话框
+     */
+    private void showOldDataDialog()
+    {
+        String[] options = {"查看旧数据", "导出旧数据"};
+        
+        new AlertDialog.Builder(this)
+            .setTitle("旧数据操作")
+            .setItems(options, (dialog, which) -> 
+            {
+                if (which == 0)
+                {
+                    // 查看旧数据
+                    showOldData();
+                }
+                else
+                {
+                    // 导出旧数据
+                    exportOldData();
+                }
+            })
+            .show();
+    }
+
+    /**
+     * 显示旧数据
+     */
+    private void showOldData()
+    {
+        List<UserData> oldData = CsvHelper.readUserDataFromCsv(this);
+        if (oldData.isEmpty())
+        {
+            Toast.makeText(this, "没有旧数据", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 创建一个临时适配器显示旧数据
+        UserDataAdapter oldDataAdapter = new UserDataAdapter();
+        oldDataAdapter.setData(oldData);
+
+        // 保存当前适配器
+        RecyclerView.Adapter<?> currentAdapter = recyclerView.getAdapter();
+        
+        // 设置旧数据适配器
+        recyclerView.setAdapter(oldDataAdapter);
+
+        // 显示提示和返回按钮
+        new AlertDialog.Builder(this)
+            .setTitle("查看旧数据")
+            .setMessage("当前显示的是历史数据")
+            .setPositiveButton("返回当前数据", (dialog, which) -> 
+            {
+                // 恢复原来的适配器
+                recyclerView.setAdapter(currentAdapter);
+            })
+            .setCancelable(false)
+            .show();
+    }
+
+    /**
+     * 导出旧数据
+     */
+    private void exportOldData()
+    {
+        // 选择导出目录
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_TITLE, "old_data");
+
+        startActivityForResult(intent, EXPORT_REQUEST_CODE);
+    }
+
+    private static final int EXPORT_REQUEST_CODE = 123;
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data)
+    {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == EXPORT_REQUEST_CODE && resultCode == RESULT_OK)
+        {
+            Uri uri = data.getData();
+            if (uri != null)
+            {
+                try
+                {
+                    ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(uri, "w");
+                    if (pfd != null)
+                    {
+                        FileOutputStream fos = new FileOutputStream(pfd.getFileDescriptor());
+                        File exportDir = new File(getCacheDir(), "export");
+                        exportDir.mkdirs();
+                        
+                        // 导出数据到临时目录
+                        CsvHelper.exportOldData(this, exportDir);
+                        
+                        // 将临时目录中的文件写入到选择的位置
+                        File[] files = exportDir.listFiles();
+                        if (files != null)
+                        {
+                            for (File file : files)
+                            {
+                                FileInputStream fis = new FileInputStream(file);
+                                byte[] buffer = new byte[1024];
+                                int length;
+                                while ((length = fis.read(buffer)) > 0)
+                                {
+                                    fos.write(buffer, 0, length);
+                                }
+                                fis.close();
+                            }
+                        }
+                        
+                        fos.close();
+                        pfd.close();
+                        
+                        // 清理临时文件
+                        for (File file : files)
+                        {
+                            file.delete();
+                        }
+                        exportDir.delete();
+                        
+                        Toast.makeText(this, "导出成功", Toast.LENGTH_SHORT).show();
+                    }
+                }
+                catch (IOException e)
+                {
+                    e.printStackTrace();
+                    Toast.makeText(this, "导出失败", Toast.LENGTH_SHORT).show();
+                }
+            }
         }
     }
 } 

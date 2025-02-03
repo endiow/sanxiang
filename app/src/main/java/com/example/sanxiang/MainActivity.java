@@ -178,6 +178,7 @@ public class MainActivity extends AppCompatActivity
         btnAdjustPhase.setOnClickListener(v -> handleAdjustPhase());
     }
 
+    //检查权限并打开文件选择器
     private void checkPermissionAndOpenPicker()
     {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)
@@ -192,6 +193,7 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
+    //请求权限结果
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults)
     {
@@ -228,6 +230,7 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
+    //处理多选结果
     private void handleMultipleFileSelection(List<Uri> uris)
     {
         if (uris != null && !uris.isEmpty())
@@ -298,6 +301,7 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
+    //预测下一天的用电量
     private void predictNextDayPower()
     {
         List<String> userIds = dbHelper.getAllUserIds();
@@ -317,6 +321,7 @@ public class MainActivity extends AppCompatActivity
         showPredictionResults(predictions);
     }
 
+    //预测用户用电量
     private PredictionResult predictUserPower(List<UserData> historicalData)
     {
         PredictionResult result = new PredictionResult();
@@ -342,6 +347,7 @@ public class MainActivity extends AppCompatActivity
         return result;
     }
 
+    //显示预测结果
     private void showPredictionResults(List<PredictionResult> predictions)
     {
         // 创建预测结果的展示字符串
@@ -373,6 +379,7 @@ public class MainActivity extends AppCompatActivity
                 .show();
     }
 
+    //相位调整
     private void handleAdjustPhase()
     {
         // TODO: 实现相位调整功能
@@ -380,8 +387,7 @@ public class MainActivity extends AppCompatActivity
     }
 
 
-    
-
+    //更新图表数据
     private void updateChartData()
     {
         List<String> dates = dbHelper.getLastSevenDays();
