@@ -6,7 +6,6 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import com.example.sanxiang.data.UserData;
 import android.content.ContentValues;
-import com.example.sanxiang.util.CsvHelper;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -128,26 +127,10 @@ public class DatabaseHelper extends SQLiteOpenHelper
             // 如果记录数达到30，将最早的记录移动到CSV文件
             if (count >= 30)
             {
-                String oldestQuery = "SELECT * FROM " + TABLE_TOTAL_POWER + 
-                        " ORDER BY date ASC LIMIT 1";
-                Cursor oldestCursor = db.rawQuery(oldestQuery, null);
-                
-                if (oldestCursor.moveToFirst())
-                {
-                    String oldDate = oldestCursor.getString(0);
-                    double oldTotalA = oldestCursor.getDouble(1);
-                    double oldTotalB = oldestCursor.getDouble(2);
-                    double oldTotalC = oldestCursor.getDouble(3);
-                    double oldUnbalanceRate = oldestCursor.getDouble(4);
-
-                    // 保存到CSV文件
-                    CsvHelper.saveTotalPowerToCsv(context, oldDate, 
-                        oldTotalA, oldTotalB, oldTotalC, oldUnbalanceRate);
-
-                    // 删除最早的记录
-                    db.delete(TABLE_TOTAL_POWER, "date = ?", new String[]{oldDate});
-                }
-                oldestCursor.close();
+                String deleteOldest = "DELETE FROM " + TABLE_TOTAL_POWER 
+                    + " WHERE date = (SELECT date FROM " + TABLE_TOTAL_POWER 
+                    + " ORDER BY date ASC LIMIT 1)";
+                db.execSQL(deleteOldest);
             }
 
             // 更新或插入新记录
@@ -182,36 +165,10 @@ public class DatabaseHelper extends SQLiteOpenHelper
             if (count >= 30)
             {
                 // 获取最早的记录
-                String oldestQuery = "SELECT * FROM " + TABLE_NAME + 
-                        " WHERE user_id = ? ORDER BY date ASC LIMIT 1";
-                cursor = db.rawQuery(oldestQuery, new String[]{data.getUserId()});
-                
-                if (cursor.moveToFirst())
-                {
-                    // 创建UserData对象
-                    UserData oldData = new UserData();
-                    oldData.setDate(cursor.getString(cursor.getColumnIndexOrThrow("date")));
-                    oldData.setUserId(cursor.getString(cursor.getColumnIndexOrThrow("user_id")));
-                    oldData.setUserName(cursor.getString(cursor.getColumnIndexOrThrow("user_name")));
-                    oldData.setRouteNumber(cursor.getString(cursor.getColumnIndexOrThrow("route_number")));
-                    oldData.setRouteName(cursor.getString(cursor.getColumnIndexOrThrow("route_name")));
-                    oldData.setPhase(cursor.getString(cursor.getColumnIndexOrThrow("phase")));
-                    oldData.setPhaseAPower(cursor.getDouble(cursor.getColumnIndexOrThrow("phase_a_power")));
-                    oldData.setPhaseBPower(cursor.getDouble(cursor.getColumnIndexOrThrow("phase_b_power")));
-                    oldData.setPhaseCPower(cursor.getDouble(cursor.getColumnIndexOrThrow("phase_c_power")));
-
-                    // 保存到CSV文件
-                    List<UserData> oldDataList = new ArrayList<>();
-                    oldDataList.add(oldData);
-                    CsvHelper.saveUserDataToCsv(context, oldDataList);
-
-                    // 删除最早的记录
-                    String deleteOldest = "DELETE FROM " + TABLE_NAME + 
-                            " WHERE user_id = ? AND date = ?";
-                    db.execSQL(deleteOldest, 
-                        new String[]{data.getUserId(), oldData.getDate()});
-                }
-                cursor.close();
+                String deleteOldest = "DELETE FROM " + TABLE_NAME 
+                    + " WHERE user_id = ? AND date = (SELECT date FROM " + TABLE_NAME 
+                    + " WHERE user_id = ? ORDER BY date ASC LIMIT 1)";
+                db.execSQL(deleteOldest, new String[]{data.getUserId(), data.getUserId()});
             }
 
             // 插入新记录
