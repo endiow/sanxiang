@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 public class DatabaseHelper extends SQLiteOpenHelper
 {
     private static final String DATABASE_NAME = "sanxiang.db";
-    private static final int DATABASE_VERSION = 1;
+    private static final int DATABASE_VERSION = 2;
     private static final String TABLE_NAME = "user_data";
     private static final String TABLE_TOTAL_POWER = "total_power";
 
@@ -40,12 +40,13 @@ public class DatabaseHelper extends SQLiteOpenHelper
                 + "phase_b_power REAL,"
                 + "phase_c_power REAL)";
         
-        // 总电量表
+        // 总电量表（添加平衡度字段）
         String createTotalPowerTable = "CREATE TABLE " + TABLE_TOTAL_POWER + " ("
                 + "date TEXT PRIMARY KEY,"
                 + "total_phase_a REAL,"
                 + "total_phase_b REAL,"
-                + "total_phase_c REAL)";
+                + "total_phase_c REAL,"
+                + "unbalance_rate REAL)";  // 新增平衡度字段
         
         db.execSQL(createTable);
         db.execSQL(createTotalPowerTable);
@@ -54,14 +55,49 @@ public class DatabaseHelper extends SQLiteOpenHelper
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion)
     {
-        // 删除旧表
-        db.execSQL("DROP TABLE IF EXISTS " + TABLE_NAME);
-        db.execSQL("DROP TABLE IF EXISTS " + TABLE_TOTAL_POWER);
-        // 创建新表
-        onCreate(db);
+        if (oldVersion < 2)
+        {
+            // 添加平衡度字段
+            db.execSQL("ALTER TABLE " + TABLE_TOTAL_POWER + " ADD COLUMN unbalance_rate REAL");
+            // 更新所有已有数据的平衡度
+            updateAllUnbalanceRates(db);
+        }
     }
 
-    // 更新或插入总电量
+    // 更新所有已有数据的平衡度
+    private void updateAllUnbalanceRates(SQLiteDatabase db)
+    {
+        String query = "SELECT date, total_phase_a, total_phase_b, total_phase_c FROM " + TABLE_TOTAL_POWER;
+        Cursor cursor = db.rawQuery(query, null);
+
+        while (cursor.moveToNext())
+        {
+            String date = cursor.getString(0);
+            double phaseA = cursor.getDouble(1);
+            double phaseB = cursor.getDouble(2);
+            double phaseC = cursor.getDouble(3);
+
+            double unbalanceRate = calculateUnbalanceRate(phaseA, phaseB, phaseC);
+
+            ContentValues values = new ContentValues();
+            values.put("unbalance_rate", unbalanceRate);
+            db.update(TABLE_TOTAL_POWER, values, "date = ?", new String[]{date});
+        }
+        cursor.close();
+    }
+
+    // 计算三相不平衡度
+    private double calculateUnbalanceRate(double phaseA, double phaseB, double phaseC)
+    {
+        double avg = (phaseA + phaseB + phaseC) / 3.0;
+        if (avg == 0) return 0;
+
+        double maxDiff = Math.max(Math.abs(phaseA - avg), 
+            Math.max(Math.abs(phaseB - avg), Math.abs(phaseC - avg)));
+        return (maxDiff / avg) * 100;
+    }
+
+    // 更新或插入总电量（包括平衡度）
     private void updateTotalPower(String date, SQLiteDatabase db)
     {
         // 计算指定日期的总电量
@@ -78,12 +114,16 @@ public class DatabaseHelper extends SQLiteOpenHelper
             double totalB = cursor.getDouble(1);
             double totalC = cursor.getDouble(2);
 
+            // 计算平衡度
+            double unbalanceRate = calculateUnbalanceRate(totalA, totalB, totalC);
+
             // 更新或插入总电量记录
             ContentValues values = new ContentValues();
             values.put("date", date);
             values.put("total_phase_a", totalA);
             values.put("total_phase_b", totalB);
             values.put("total_phase_c", totalC);
+            values.put("unbalance_rate", unbalanceRate);
 
             db.insertWithOnConflict(TABLE_TOTAL_POWER, null, values, 
                 SQLiteDatabase.CONFLICT_REPLACE);
@@ -229,12 +269,12 @@ public class DatabaseHelper extends SQLiteOpenHelper
         return date;
     }
 
-    // 获取指定日期的三相总电量
+    // 获取指定日期的三相总电量和平衡度
     public double[] getTotalPowerByDate(String date)
     {
-        double[] totalPower = new double[3];
+        double[] totalPower = new double[4];  // 增加一个元素存储平衡度
         SQLiteDatabase db = getReadableDatabase();
-        String query = "SELECT total_phase_a, total_phase_b, total_phase_c "
+        String query = "SELECT total_phase_a, total_phase_b, total_phase_c, unbalance_rate "
                 + "FROM " + TABLE_TOTAL_POWER + " WHERE date = ?";
         Cursor cursor = db.rawQuery(query, new String[]{date});
 
@@ -243,6 +283,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
             totalPower[0] = cursor.getDouble(0);
             totalPower[1] = cursor.getDouble(1);
             totalPower[2] = cursor.getDouble(2);
+            totalPower[3] = cursor.getDouble(3);  // 平衡度
         }
         cursor.close();
         return totalPower;
@@ -357,5 +398,83 @@ public class DatabaseHelper extends SQLiteOpenHelper
         } finally {
             db.endTransaction();
         }
+    }
+
+    /**
+     * 获取指定日期的用户数据，按用户分页
+     * @param date 日期
+     * @param pageNumber 页码（从1开始）
+     * @return 用户数据列表
+     */
+    public List<UserData> getUserDataByDatePaged(String date, int pageNumber)
+    {
+        List<UserData> dataList = new ArrayList<>();
+        SQLiteDatabase db = getReadableDatabase();
+        
+        // 先获取该日期下的第N个用户ID
+        String userQuery = "SELECT DISTINCT user_id FROM " + TABLE_NAME + 
+                " WHERE date = ? ORDER BY user_id LIMIT 1 OFFSET ?";
+        
+        Cursor userCursor = db.rawQuery(userQuery, 
+            new String[]{date, String.valueOf(pageNumber - 1)});
+
+        if (userCursor.moveToFirst())
+        {
+            String userId = userCursor.getString(0);
+            
+            // 获取该用户的数据
+            String dataQuery = "SELECT * FROM " + TABLE_NAME + 
+                    " WHERE date = ? AND user_id = ? ORDER BY user_id";
+            
+            Cursor dataCursor = db.rawQuery(dataQuery, new String[]{date, userId});
+
+            while (dataCursor.moveToNext())
+            {
+                UserData userData = new UserData();
+                int dateIndex = dataCursor.getColumnIndexOrThrow("date");
+                int userIdIndex = dataCursor.getColumnIndexOrThrow("user_id");
+                int userNameIndex = dataCursor.getColumnIndexOrThrow("user_name");
+                int routeNumberIndex = dataCursor.getColumnIndexOrThrow("route_number");
+                int routeNameIndex = dataCursor.getColumnIndexOrThrow("route_name");
+                int phaseIndex = dataCursor.getColumnIndexOrThrow("phase");
+                int phaseAPowerIndex = dataCursor.getColumnIndexOrThrow("phase_a_power");
+                int phaseBPowerIndex = dataCursor.getColumnIndexOrThrow("phase_b_power");
+                int phaseCPowerIndex = dataCursor.getColumnIndexOrThrow("phase_c_power");
+
+                userData.setDate(dataCursor.getString(dateIndex));
+                userData.setUserId(dataCursor.getString(userIdIndex));
+                userData.setUserName(dataCursor.getString(userNameIndex));
+                userData.setRouteNumber(dataCursor.getString(routeNumberIndex));
+                userData.setRouteName(dataCursor.getString(routeNameIndex));
+                userData.setPhase(dataCursor.getString(phaseIndex));
+                userData.setPhaseAPower(dataCursor.getDouble(phaseAPowerIndex));
+                userData.setPhaseBPower(dataCursor.getDouble(phaseBPowerIndex));
+                userData.setPhaseCPower(dataCursor.getDouble(phaseCPowerIndex));
+                dataList.add(userData);
+            }
+            dataCursor.close();
+        }
+        userCursor.close();
+        return dataList;
+    }
+
+    /**
+     * 获取指定日期的用户总数（总页数）
+     * @param date 日期
+     * @return 用户总数
+     */
+    public int getTotalUserCountByDate(String date)
+    {
+        SQLiteDatabase db = getReadableDatabase();
+        String query = "SELECT COUNT(DISTINCT user_id) FROM " + TABLE_NAME + " WHERE date = ?";
+        Cursor cursor = db.rawQuery(query, new String[]{date});
+        
+        int count = 0;
+        if (cursor.moveToFirst())
+        {
+            count = cursor.getInt(0);
+        }
+        cursor.close();
+        return count;
     }
 } 

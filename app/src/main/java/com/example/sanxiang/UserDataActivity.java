@@ -159,8 +159,8 @@ public class UserDataActivity extends AppCompatActivity
      */
     private void displayTotalPower(double[] totalPower)
     {
-        // 计算三相不平衡度
-        double unbalanceRate = UnbalanceCalculator.calculateUnbalanceRate( totalPower[0], totalPower[1], totalPower[2]);
+        // 使用数据库中存储的平衡度值
+        double unbalanceRate = totalPower[3];  // 第四个元素是平衡度
         String status = UnbalanceCalculator.getUnbalanceStatus(unbalanceRate);
 
         // 格式化显示信息
@@ -179,7 +179,6 @@ public class UserDataActivity extends AppCompatActivity
             @Override
             public void onClick(@NonNull View view)
             {
-                //点击文字调用函数显示计算过程
                 UnbalanceCalculator.showCalculationProcess(
                     UserDataActivity.this,
                     totalPower[0], totalPower[1], totalPower[2]
