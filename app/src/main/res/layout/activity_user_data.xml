@@ -37,7 +37,10 @@
             android:gravity="center"
             android:textSize="18sp"
             android:hint="输入日期 (yyyy-MM-dd)"
-            android:inputType="date"/>
+            android:inputType="date"
+            android:imeOptions="actionDone"
+            android:maxLines="1"
+            android:singleLine="true"/>
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnNextDay"

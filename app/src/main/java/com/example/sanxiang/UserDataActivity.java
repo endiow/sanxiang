@@ -66,6 +66,22 @@ public class UserDataActivity extends AppCompatActivity
             adapter.filter(userId);
         });
         
+        tvDate.setOnEditorActionListener((v, actionId, event) -> 
+        {
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE || 
+                actionId == android.view.inputmethod.EditorInfo.IME_ACTION_NEXT ||
+                (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ENTER))
+            {
+                String searchDate = tvDate.getText().toString().trim();
+                if (!searchDate.isEmpty() && isValidDateFormat(searchDate))
+                {
+                    loadData(searchDate);
+                }
+                return true;
+            }
+            return false;
+        });
+
         tvDate.setOnFocusChangeListener((v, hasFocus) -> 
         {
             if (!hasFocus)

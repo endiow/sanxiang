@@ -45,6 +45,8 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 public class MainActivity extends AppCompatActivity
 {
@@ -237,6 +239,8 @@ public class MainActivity extends AppCompatActivity
         {
             int successCount = 0;
             int totalFiles = uris.size();
+            // 使用Map按日期分组存储数据
+            Map<String, List<UserData>> dateGroupedData = new HashMap<>();
 
             for (Uri uri : uris)
             {
@@ -257,7 +261,8 @@ public class MainActivity extends AppCompatActivity
                             if (data.length >= 9)
                             {
                                 UserData userData = new UserData();
-                                userData.setDate(data[0].trim());
+                                String date = data[0].trim();
+                                userData.setDate(date);
                                 userData.setUserId(data[1].trim());
                                 userData.setUserName(data[2].trim());
                                 userData.setRouteNumber(data[3].trim());
@@ -267,7 +272,8 @@ public class MainActivity extends AppCompatActivity
                                 userData.setPhaseBPower(Double.parseDouble(data[7].trim()));
                                 userData.setPhaseCPower(Double.parseDouble(data[8].trim()));
 
-                                dbHelper.insertData(userData);
+                                // 按日期分组存储数据
+                                dateGroupedData.computeIfAbsent(date, k -> new ArrayList<>()).add(userData);
                             }
                         }
                         catch (Exception e)
@@ -283,6 +289,19 @@ public class MainActivity extends AppCompatActivity
                 catch (Exception e)
                 {
                     e.printStackTrace();
+                }
+            }
+
+            // 按日期顺序导入数据
+            List<String> sortedDates = new ArrayList<>(dateGroupedData.keySet());
+            Collections.sort(sortedDates);  // 按日期升序排序
+
+            for (String date : sortedDates)
+            {
+                List<UserData> dayData = dateGroupedData.get(date);
+                if (!dayData.isEmpty())
+                {
+                    dbHelper.importData(dayData);
                 }
             }
 
@@ -309,7 +328,7 @@ public class MainActivity extends AppCompatActivity
         
         for (String userId : userIds)
         {
-            List<UserData> historicalData = dbHelper.getLastThirtyDaysData(userId);
+            List<UserData> historicalData = dbHelper.getLastTwentyDaysData(userId);
             if (historicalData.size() >= 3)  // 至少需要3天的数据才能预测
             {
                 PredictionResult prediction = predictUserPower(historicalData);
@@ -390,7 +409,7 @@ public class MainActivity extends AppCompatActivity
     //更新图表数据
     private void updateChartData()
     {
-        List<String> dates = dbHelper.getLastSevenDays();
+        List<String> dates = dbHelper.getLastNDays(7);
         if (dates.isEmpty()) return;
 
         // 准备三相数据

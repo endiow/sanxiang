@@ -78,7 +78,7 @@ public class PredictionActivity extends AppCompatActivity
         
         for (String userId : userIds)
         {
-            List<UserData> historicalData = dbHelper.getLastThirtyDaysData(userId);
+            List<UserData> historicalData = dbHelper.getLastTwentyDaysData(userId);
             if (historicalData.size() >= 3)
             {
                 PredictionResult prediction = predictUserPower(historicalData);

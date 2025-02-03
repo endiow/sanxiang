@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 public class DatabaseHelper extends SQLiteOpenHelper
 {
     private static final String DATABASE_NAME = "sanxiang.db";
-    private static final int DATABASE_VERSION = 2;
+    private static final int DATABASE_VERSION = 1;
     private static final String TABLE_NAME = "user_data";
     private static final String TABLE_TOTAL_POWER = "total_power";
     private final Context context;
@@ -42,14 +42,14 @@ public class DatabaseHelper extends SQLiteOpenHelper
                 + "phase_b_power REAL,"
                 + "phase_c_power REAL)";
         
-        // 总电量表（添加平衡度字段）
+        // 总电量和平衡度表
         String createTotalPowerTable = "CREATE TABLE " + TABLE_TOTAL_POWER + " ("
                 + "date TEXT PRIMARY KEY,"
                 + "total_phase_a REAL,"
                 + "total_phase_b REAL,"
                 + "total_phase_c REAL,"
                 + "unbalance_rate REAL)";
-        
+
         db.execSQL(createTable);
         db.execSQL(createTotalPowerTable);
     }
@@ -57,49 +57,87 @@ public class DatabaseHelper extends SQLiteOpenHelper
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion)
     {
-        if (oldVersion < 2)
+        
+    }
+
+    // 导入一天的所有用户数据
+    public void importData(List<UserData> dayData)
+    {
+        if (dayData == null || dayData.isEmpty()) return;
+
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try
         {
-            // 添加平衡度字段
-            db.execSQL("ALTER TABLE " + TABLE_TOTAL_POWER + " ADD COLUMN unbalance_rate REAL");
-            // 更新所有已有数据的平衡度
-            updateAllUnbalanceRates(db);
+            String date = dayData.get(0).getDate();
+
+            // 处理每个用户的数据
+            for (UserData data : dayData)
+            {
+                insertData(data);
+            }
+
+            // 所有数据插入完成后，更新该日期的总电量
+            updateTotalPower(date, db);
+            
+            db.setTransactionSuccessful();
+        }
+        finally
+        {
+            db.endTransaction();
         }
     }
 
-    // 更新所有已有数据的平衡度
-    private void updateAllUnbalanceRates(SQLiteDatabase db)
+    // 插入单条数据
+    public void insertData(UserData data)
     {
-        String query = "SELECT date, total_phase_a, total_phase_b, total_phase_c FROM " + TABLE_TOTAL_POWER;
-        Cursor cursor = db.rawQuery(query, null);
-
-        while (cursor.moveToNext())
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try
         {
-            String date = cursor.getString(0);
-            double phaseA = cursor.getDouble(1);
-            double phaseB = cursor.getDouble(2);
-            double phaseC = cursor.getDouble(3);
+            // 先删除相同日期和用户ID的数据
+            String deleteExisting = "DELETE FROM " + TABLE_NAME + " WHERE user_id = ? AND date = ?";
+            db.execSQL(deleteExisting, new String[]{data.getUserId(), data.getDate()});
 
-            double unbalanceRate = calculateUnbalanceRate(phaseA, phaseB, phaseC);
+            // 检查用户记录数
+            String countQuery = "SELECT COUNT(*) FROM " + TABLE_NAME + " WHERE user_id = ?";
+            Cursor cursor = db.rawQuery(countQuery, new String[]{data.getUserId()});
+            cursor.moveToFirst();
+            int count = cursor.getInt(0);
+            cursor.close();
 
+            // 如果记录数达到30，删除最早的记录
+            if (count >= 30)
+            {
+                String deleteOldest = "DELETE FROM " + TABLE_NAME 
+                    + " WHERE user_id = ? AND date = (SELECT date FROM " + TABLE_NAME 
+                    + " WHERE user_id = ? ORDER BY date ASC LIMIT 1)";
+                db.execSQL(deleteOldest, new String[]{data.getUserId(), data.getUserId()});
+            }
+
+            // 插入新记录
             ContentValues values = new ContentValues();
-            values.put("unbalance_rate", unbalanceRate);
-            db.update(TABLE_TOTAL_POWER, values, "date = ?", new String[]{date});
+            values.put("date", data.getDate());
+            values.put("user_id", data.getUserId());
+            values.put("user_name", data.getUserName());
+            values.put("route_number", data.getRouteNumber());
+            values.put("route_name", data.getRouteName());
+            values.put("phase", data.getPhase());
+            values.put("phase_a_power", data.getPhaseAPower());
+            values.put("phase_b_power", data.getPhaseBPower());
+            values.put("phase_c_power", data.getPhaseCPower());
+            
+            db.insert(TABLE_NAME, null, values);
+            
+            db.setTransactionSuccessful();
         }
-        cursor.close();
+        finally
+        {
+            db.endTransaction();
+        }
     }
 
-    // 计算三相不平衡度
-    private double calculateUnbalanceRate(double phaseA, double phaseB, double phaseC)
-    {
-        double avg = (phaseA + phaseB + phaseC) / 3.0;
-        if (avg == 0) return 0;
-
-        double maxDiff = Math.max(Math.abs(phaseA - avg), 
-            Math.max(Math.abs(phaseB - avg), Math.abs(phaseC - avg)));
-        return (maxDiff / avg) * 100;
-    }
-
-    // 更新或插入总电量（包括平衡度）
+    // 更新date的总电量和平衡度
     private void updateTotalPower(String date, SQLiteDatabase db)
     {
         // 计算指定日期的总电量
@@ -124,7 +162,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
             int count = countCursor.getInt(0);
             countCursor.close();
 
-            // 如果记录数达到30，将最早的记录移动到CSV文件
+            // 如果记录数达到30，删除最早的记录
             if (count >= 30)
             {
                 String deleteOldest = "DELETE FROM " + TABLE_TOTAL_POWER 
@@ -141,69 +179,88 @@ public class DatabaseHelper extends SQLiteOpenHelper
             values.put("total_phase_c", totalC);
             values.put("unbalance_rate", unbalanceRate);
 
-            db.insertWithOnConflict(TABLE_TOTAL_POWER, null, values, 
-                SQLiteDatabase.CONFLICT_REPLACE);
+            db.insertWithOnConflict(TABLE_TOTAL_POWER, null, values, SQLiteDatabase.CONFLICT_REPLACE);
         }
         cursor.close();
     }
 
-    // 插入数据，超过30条的旧数据移动到CSV文件
-    public void insertData(UserData data)
+    // 计算三相不平衡度
+    private double calculateUnbalanceRate(double phaseA, double phaseB, double phaseC)
     {
-        SQLiteDatabase db = getWritableDatabase();
-        db.beginTransaction();
-        try
+        double avg = (phaseA + phaseB + phaseC) / 3.0;
+        if (avg == 0) return 0;
+
+        double maxDiff = Math.max(Math.abs(phaseA - avg), Math.max(Math.abs(phaseB - avg), Math.abs(phaseC - avg)));
+        return (maxDiff / avg) * 100;
+    }
+
+
+
+    //-----------------------------------辅助函数-----------------------------------
+
+    // 获取所有用户ID
+    public List<String> getAllUserIds()
+    {
+        List<String> userIds = new ArrayList<>();
+        SQLiteDatabase db = getReadableDatabase();
+        String query = "SELECT DISTINCT user_id FROM " + TABLE_NAME;
+        Cursor cursor = db.rawQuery(query, null);
+
+        while (cursor.moveToNext())
         {
-            // 检查用户记录数
-            String countQuery = "SELECT COUNT(*) FROM " + TABLE_NAME + " WHERE user_id = ?";
-            Cursor cursor = db.rawQuery(countQuery, new String[]{data.getUserId()});
-            cursor.moveToFirst();
-            int count = cursor.getInt(0);
-            cursor.close();
-
-            // 如果记录数达到30，将最早的记录移动到CSV文件
-            if (count >= 30)
-            {
-                // 获取最早的记录
-                String deleteOldest = "DELETE FROM " + TABLE_NAME 
-                    + " WHERE user_id = ? AND date = (SELECT date FROM " + TABLE_NAME 
-                    + " WHERE user_id = ? ORDER BY date ASC LIMIT 1)";
-                db.execSQL(deleteOldest, new String[]{data.getUserId(), data.getUserId()});
-            }
-
-            // 插入新记录
-            ContentValues values = new ContentValues();
-            values.put("date", data.getDate());
-            values.put("user_id", data.getUserId());
-            values.put("user_name", data.getUserName());
-            values.put("route_number", data.getRouteNumber());
-            values.put("route_name", data.getRouteName());
-            values.put("phase", data.getPhase());
-            values.put("phase_a_power", data.getPhaseAPower());
-            values.put("phase_b_power", data.getPhaseBPower());
-            values.put("phase_c_power", data.getPhaseCPower());
-            
-            db.insertWithOnConflict(TABLE_NAME, null, values, 
-                SQLiteDatabase.CONFLICT_REPLACE);
-
-            // 更新该日期的总电量
-            updateTotalPower(data.getDate(), db);
-
-            db.setTransactionSuccessful();
+            userIds.add(cursor.getString(0));
         }
-        finally
+        cursor.close();
+        return userIds;
+    }
+    
+    // 获取最近n天的日期列表
+    public List<String> getLastNDays(int n)
+    {
+        List<String> dates = new ArrayList<>();
+        SQLiteDatabase db = getReadableDatabase();
+        String query = "SELECT DISTINCT date FROM " + TABLE_TOTAL_POWER + " ORDER BY date DESC LIMIT ?";
+        Cursor cursor = db.rawQuery(query, new String[]{String.valueOf(n)});
+
+        while (cursor.moveToNext())
         {
-            db.endTransaction();
+            dates.add(cursor.getString(0));
         }
+        cursor.close();
+        return dates;
     }
 
     // 获取最新日期
     public String getLatestDate()
     {
-        SQLiteDatabase db = getReadableDatabase();
-        String query = "SELECT date FROM " + TABLE_NAME + " ORDER BY date DESC LIMIT 1";
-        Cursor cursor = db.rawQuery(query, null);
+        List<String> dates = getLastNDays(1);
+        return dates.isEmpty() ? null : dates.get(0);
+    }
 
+    // 获取currentDate前一天的日期
+    public String getPrevDate(String currentDate)
+    {
+        SQLiteDatabase db = getReadableDatabase();
+
+        String query = "SELECT DISTINCT date FROM " + TABLE_NAME + " WHERE date < ? ORDER BY date DESC LIMIT 1";
+        Cursor cursor = db.rawQuery(query, new String[]{currentDate});
+
+        String date = null;
+        if (cursor.moveToFirst())
+        {
+            date = cursor.getString(0);
+        }
+        cursor.close();
+        return date;
+    }
+
+    // 获取currentDate下一天的日期
+    public String getNextDate(String currentDate)
+    {
+        SQLiteDatabase db = getReadableDatabase();
+
+        String query = "SELECT DISTINCT date FROM " + TABLE_NAME + " WHERE date > ? ORDER BY date ASC LIMIT 1";
+        Cursor cursor = db.rawQuery(query, new String[]{currentDate});
 
         String date = null;
         if (cursor.moveToFirst())
@@ -216,7 +273,6 @@ public class DatabaseHelper extends SQLiteOpenHelper
 
     // 获取指定日期的用户数据
     public List<UserData> getUserDataByDate(String date)
-
     {
         List<UserData> dataList = new ArrayList<>();
         SQLiteDatabase db = getReadableDatabase();
@@ -251,46 +307,10 @@ public class DatabaseHelper extends SQLiteOpenHelper
         return dataList;
     }
 
-    // 获取前一天的日期
-    public String getPrevDate(String currentDate)
-    {
-        SQLiteDatabase db = getReadableDatabase();
-
-        String query = "SELECT DISTINCT date FROM " + TABLE_NAME 
-                + " WHERE date < ? ORDER BY date DESC LIMIT 1";
-        Cursor cursor = db.rawQuery(query, new String[]{currentDate});
-
-        String date = null;
-        if (cursor.moveToFirst())
-        {
-            date = cursor.getString(0);
-        }
-        cursor.close();
-        return date;
-    }
-
-    // 获取下一天的日期
-    public String getNextDate(String currentDate)
-    {
-        SQLiteDatabase db = getReadableDatabase();
-
-        String query = "SELECT DISTINCT date FROM " + TABLE_NAME 
-                + " WHERE date > ? ORDER BY date ASC LIMIT 1";
-        Cursor cursor = db.rawQuery(query, new String[]{currentDate});
-
-        String date = null;
-        if (cursor.moveToFirst())
-        {
-            date = cursor.getString(0);
-        }
-        cursor.close();
-        return date;
-    }
-
     // 获取指定日期的三相总电量和平衡度
     public double[] getTotalPowerByDate(String date)
     {
-        double[] totalPower = new double[4];  // 增加一个元素存储平衡度
+        double[] totalPower = new double[4];  
         SQLiteDatabase db = getReadableDatabase();
         String query = "SELECT total_phase_a, total_phase_b, total_phase_c, unbalance_rate "
                 + "FROM " + TABLE_TOTAL_POWER + " WHERE date = ?";
@@ -301,40 +321,18 @@ public class DatabaseHelper extends SQLiteOpenHelper
             totalPower[0] = cursor.getDouble(0);
             totalPower[1] = cursor.getDouble(1);
             totalPower[2] = cursor.getDouble(2);
-            totalPower[3] = cursor.getDouble(3);  // 平衡度
+            totalPower[3] = cursor.getDouble(3);  
         }
         cursor.close();
         return totalPower;
     }
 
-    // 获取最近7天的日期列表
-    public List<String> getLastSevenDays()
-    {
-        List<String> dates = new ArrayList<>();
-
-        SQLiteDatabase db = getReadableDatabase();
-
-        String query = "SELECT DISTINCT date FROM " + TABLE_TOTAL_POWER +
-                " ORDER BY date DESC LIMIT 7";
-
-        Cursor cursor = db.rawQuery(query, null);
-
-        while (cursor.moveToNext())
-        {
-            dates.add(cursor.getString(0));
-        }
-
-        cursor.close();
-        return dates;
-    }
-
-    // 获取某用户最近30天的用户数据
-    public List<UserData> getLastThirtyDaysData(String userId)
+    // 获取某用户最近20天的用户数据，用于预测
+    public List<UserData> getLastTwentyDaysData(String userId)
     {
         List<UserData> dataList = new ArrayList<>();
         SQLiteDatabase db = getReadableDatabase();
-        String query = "SELECT * FROM " + TABLE_NAME + 
-                " WHERE user_id = ? ORDER BY date DESC LIMIT 30";
+        String query = "SELECT * FROM " + TABLE_NAME + " WHERE user_id = ? ORDER BY date DESC LIMIT 20";
         Cursor cursor = db.rawQuery(query, new String[]{userId});
 
         while (cursor.moveToNext())
@@ -365,22 +363,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
         return dataList;
     }
 
-    // 获取所有用户ID
-    public List<String> getAllUserIds()
-    {
-        List<String> userIds = new ArrayList<>();
-        SQLiteDatabase db = getReadableDatabase();
-        String query = "SELECT DISTINCT user_id FROM " + TABLE_NAME;
-        Cursor cursor = db.rawQuery(query, null);
-
-
-        while (cursor.moveToNext())
-        {
-            userIds.add(cursor.getString(0));
-        }
-        cursor.close();
-        return userIds;
-    }
+    
 
     
 } 
