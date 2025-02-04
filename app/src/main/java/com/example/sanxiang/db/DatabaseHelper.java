@@ -397,6 +397,42 @@ public class DatabaseHelper extends SQLiteOpenHelper
         return totalPower;
     }
 
+    // 获取指定用户信息的格式化字符串
+    public String getUserInfo(String userId)
+    {
+        SQLiteDatabase db = getReadableDatabase();
+        String query = "SELECT * FROM " + TABLE_USER_INFO + " WHERE " + COLUMN_USER_ID + " = ?";
+        Cursor cursor = db.rawQuery(query, new String[]{userId});
+        
+        if (cursor != null && cursor.moveToFirst())
+        {
+            int userNameIndex = cursor.getColumnIndex(COLUMN_USER_NAME);
+            int routeNumberIndex = cursor.getColumnIndex(COLUMN_ROUTE_NUMBER);
+            int routeNameIndex = cursor.getColumnIndex(COLUMN_ROUTE_NAME);
+            
+            if (userNameIndex >= 0 && routeNumberIndex >= 0 && routeNameIndex >= 0)
+            {
+                String userName = cursor.getString(userNameIndex);
+                String routeNumber = cursor.getString(routeNumberIndex);
+                String routeName = cursor.getString(routeNameIndex);
+                
+                cursor.close();
+                return String.format(
+                    "用户编号：%s\n" +
+                    "用户名称：%s\n" +
+                    "回路编号：%s\n" +
+                    "线路名称：%s",
+                    userId, userName, routeNumber, routeName
+                );
+            }
+        }
+        if (cursor != null)
+        {
+            cursor.close();
+        }
+        return null;
+    }
+
     // 获取指定日期的用户数据
     public List<UserData> getUserDataByDate(String date)
     {

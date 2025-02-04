@@ -3,9 +3,19 @@ package com.example.sanxiang;
 import android.os.Bundle;
 import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import androidx.annotation.NonNull;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.widget.EditText;
+
 import com.example.sanxiang.db.DatabaseHelper;
-import android.database.Cursor;
-import android.database.sqlite.SQLiteDatabase;
+import java.util.ArrayList;
+import java.util.List;
 
 public class TableViewActivity extends AppCompatActivity
 {
@@ -14,7 +24,11 @@ public class TableViewActivity extends AppCompatActivity
     public static final int TYPE_TOTAL_POWER = 2;
 
     private DatabaseHelper dbHelper;
-    private TextView tvContent;
+    private RecyclerView recyclerView;
+    private TextView tvTitle;
+    private EditText etSearch;
+    private List<String> allRows = new ArrayList<>();
+    private TableAdapter adapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState)
@@ -23,98 +37,188 @@ public class TableViewActivity extends AppCompatActivity
         setContentView(R.layout.activity_table_view);
 
         dbHelper = new DatabaseHelper(this);
-        tvContent = findViewById(R.id.tvContent);
+        recyclerView = findViewById(R.id.recyclerView);
+        tvTitle = findViewById(R.id.tvTitle);
+        etSearch = findViewById(R.id.etSearch);
+
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        adapter = new TableAdapter(new ArrayList<>());
+        recyclerView.setAdapter(adapter);
 
         int tableType = getIntent().getIntExtra(EXTRA_TABLE_TYPE, TYPE_USER_INFO);
-        
         if (tableType == TYPE_USER_INFO)
         {
-            setTitle("用户信息表");
             displayUserInfo();
+            setupUserInfoSearch();
         }
         else
         {
-            setTitle("总电量表");
             displayTotalPower();
+            setupTotalPowerSearch();
         }
+    }
+
+    private void setupUserInfoSearch()
+    {
+        etSearch.setHint("输入用户编号搜索...");
+        etSearch.addTextChangedListener(new TextWatcher()
+        {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after)
+            {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count)
+            {
+            }
+
+            @Override
+            public void afterTextChanged(Editable s)
+            {
+                filterUserInfo(s.toString());
+            }
+        });
+    }
+
+    private void setupTotalPowerSearch()
+    {
+        etSearch.setHint("输入日期搜索...");
+        etSearch.addTextChangedListener(new TextWatcher()
+        {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after)
+            {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count)
+            {
+            }
+
+            @Override
+            public void afterTextChanged(Editable s)
+            {
+                filterTotalPower(s.toString());
+            }
+        });
+    }
+
+    private void filterUserInfo(String query)
+    {
+        List<String> filteredList = new ArrayList<>();
+        for (String row : allRows)
+        {
+            if (row.toLowerCase().contains(query.toLowerCase()))
+            {
+                filteredList.add(row);
+            }
+        }
+        adapter.updateData(filteredList);
+    }
+
+    private void filterTotalPower(String query)
+    {
+        List<String> filteredList = new ArrayList<>();
+        for (String row : allRows)
+        {
+            if (row.toLowerCase().contains(query.toLowerCase()))
+            {
+                filteredList.add(row);
+            }
+        }
+        adapter.updateData(filteredList);
     }
 
     private void displayUserInfo()
     {
-        SQLiteDatabase db = dbHelper.getReadableDatabase();
-        StringBuilder content = new StringBuilder();
-        content.append(String.format("%-15s %-15s %-15s %-15s\n",
-            "用户编号", "用户名称", "回路编号", "线路名称"));
-        content.append("------------------------------------------------\n");
-
-        Cursor cursor = db.query("user_info", null, null, null, null, null, "user_id ASC");
+        tvTitle.setText("用户信息表");
+        allRows.clear();
         
-        int userIdIndex = cursor.getColumnIndex("user_id");
-        int userNameIndex = cursor.getColumnIndex("user_name");
-        int routeNumberIndex = cursor.getColumnIndex("route_number");
-        int routeNameIndex = cursor.getColumnIndex("route_name");
-        
-        // 检查所有列是否都存在
-        if (userIdIndex >= 0 && userNameIndex >= 0 && routeNumberIndex >= 0 && routeNameIndex >= 0)
+        List<String> userIds = dbHelper.getAllUserIds();
+        for (String userId : userIds)
         {
-            while (cursor.moveToNext())
+            String userInfo = dbHelper.getUserInfo(userId);
+            if (userInfo != null)
             {
-                String userId = cursor.getString(userIdIndex);
-                String userName = cursor.getString(userNameIndex);
-                String routeNumber = cursor.getString(routeNumberIndex);
-                String routeName = cursor.getString(routeNameIndex);
-
-                content.append(String.format("%-15s %-15s %-15s %-15s\n",
-                    userId, userName, routeNumber, routeName));
+                allRows.add(userInfo);
             }
         }
-        else
-        {
-            content.append("表结构错误：缺少必要的列");
-        }
-        cursor.close();
 
-        tvContent.setText(content.toString());
+        adapter.updateData(allRows);
     }
 
     private void displayTotalPower()
     {
-        SQLiteDatabase db = dbHelper.getReadableDatabase();
-        StringBuilder content = new StringBuilder();
-        content.append(String.format("%-12s %-10s %-10s %-10s %-10s\n",
-            "日期", "A相总量", "B相总量", "C相总量", "不平衡度"));
-        content.append("------------------------------------------------\n");
-
-        Cursor cursor = db.query("total_power", null, null, null, null, null, "date DESC");
+        tvTitle.setText("总电量表");
+        allRows.clear();
         
-        int dateIndex = cursor.getColumnIndex("date");
-        int totalAIndex = cursor.getColumnIndex("total_phase_a");
-        int totalBIndex = cursor.getColumnIndex("total_phase_b");
-        int totalCIndex = cursor.getColumnIndex("total_phase_c");
-        int unbalanceRateIndex = cursor.getColumnIndex("unbalance_rate");
-        
-        // 检查所有列是否都存在
-        if (dateIndex >= 0 && totalAIndex >= 0 && totalBIndex >= 0 && 
-            totalCIndex >= 0 && unbalanceRateIndex >= 0)
+        List<String> dates = dbHelper.getLastNDays(30);
+        for (String date : dates)
         {
-            while (cursor.moveToNext())
+            double[] powers = dbHelper.getTotalPowerByDate(date);
+            if (powers != null)
             {
-                String date = cursor.getString(dateIndex);
-                double totalA = cursor.getDouble(totalAIndex);
-                double totalB = cursor.getDouble(totalBIndex);
-                double totalC = cursor.getDouble(totalCIndex);
-                double unbalanceRate = cursor.getDouble(unbalanceRateIndex);
-
-                content.append(String.format("%-12s %-10.2f %-10.2f %-10.2f %-10.2f%%\n",
-                    date, totalA, totalB, totalC, unbalanceRate));
+                String row = String.format(
+                    "日期：%s\n" +
+                    "A相总量：%.2f\n" +
+                    "B相总量：%.2f\n" +
+                    "C相总量：%.2f\n" +
+                    "三相不平衡度：%.2f%%",
+                    date, powers[0], powers[1], powers[2], powers[3]
+                );
+                allRows.add(row);
             }
         }
-        else
-        {
-            content.append("表结构错误：缺少必要的列");
-        }
-        cursor.close();
 
-        tvContent.setText(content.toString());
+        adapter.updateData(allRows);
+    }
+
+    private static class TableAdapter extends RecyclerView.Adapter<TableAdapter.ViewHolder>
+    {
+        private List<String> rows;
+
+        public TableAdapter(List<String> rows)
+        {
+            this.rows = rows;
+        }
+
+        public void updateData(List<String> newRows)
+        {
+            this.rows = newRows;
+            notifyDataSetChanged();
+        }
+
+        @NonNull
+        @Override
+        public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType)
+        {
+            View view = LayoutInflater.from(parent.getContext())
+                .inflate(R.layout.item_table_row, parent, false);
+            return new ViewHolder(view);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull ViewHolder holder, int position)
+        {
+            holder.tvRowContent.setText(rows.get(position));
+        }
+
+        @Override
+        public int getItemCount()
+        {
+            return rows.size();
+        }
+
+        static class ViewHolder extends RecyclerView.ViewHolder
+        {
+            TextView tvRowContent;
+
+            ViewHolder(View view)
+            {
+                super(view);
+                tvRowContent = view.findViewById(R.id.tvRowContent);
+            }
+        }
     }
 } 
