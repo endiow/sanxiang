@@ -164,14 +164,15 @@ public class PredictionActivity extends AppCompatActivity
         {
             // 准备数据
             List<Map<String, Object>> pyData = new ArrayList<>();
-            for (UserData data : historicalData) 
+            for (int i = historicalData.size() - 1; i >= 0; i--) 
             {
+                UserData data = historicalData.get(i);
                 Map<String, Object> dayData = new HashMap<>();
                 dayData.put("date", data.getDate());
                 dayData.put("phase_a", data.getPhaseAPower());
                 dayData.put("phase_b", data.getPhaseBPower());
                 dayData.put("phase_c", data.getPhaseCPower());
-                pyData.add(dayData);
+                pyData.add(0, dayData);  // 添加到列表开头，确保按日期升序排序
             }
             
             // 调用Python预测

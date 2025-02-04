@@ -30,6 +30,8 @@
             android:name=".UserDataActivity"
             android:exported="false"/>
         <activity android:name=".PredictionActivity" />
+        <activity android:name=".PredictionDetailActivity" />
+        <activity android:name=".TableViewActivity" />
     </application>
 
 </manifest>

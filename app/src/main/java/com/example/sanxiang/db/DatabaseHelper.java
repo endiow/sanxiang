@@ -7,16 +7,59 @@ import android.database.sqlite.SQLiteOpenHelper;
 import com.example.sanxiang.data.UserData;
 import android.content.ContentValues;
 
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Collections;
+import java.util.Map;
 
 public class DatabaseHelper extends SQLiteOpenHelper
 {
-    private static final String DATABASE_NAME = "sanxiang.db";
+    private static final String DATABASE_NAME = "user_data.db";
     private static final int DATABASE_VERSION = 1;
-    private static final String TABLE_NAME = "user_data";
-    private static final String TABLE_TOTAL_POWER = "total_power";
+    private static final String TABLE_USER_INFO = "user_info";  // 用户信息表
+    private static final String TABLE_TOTAL_POWER = "total_power";  // 总电量表
     private final Context context;
+
+    // 列名常量
+    private static final String COLUMN_DATE = "date";
+    private static final String COLUMN_USER_ID = "user_id";
+    private static final String COLUMN_USER_NAME = "user_name";
+    private static final String COLUMN_ROUTE_NUMBER = "route_number";
+    private static final String COLUMN_ROUTE_NAME = "route_name";
+    private static final String COLUMN_PHASE = "phase";
+    private static final String COLUMN_PHASE_A_POWER = "phase_a_power";
+    private static final String COLUMN_PHASE_B_POWER = "phase_b_power";
+    private static final String COLUMN_PHASE_C_POWER = "phase_c_power";
+    private static final String COLUMN_TOTAL_PHASE_A = "total_phase_a";
+    private static final String COLUMN_TOTAL_PHASE_B = "total_phase_b";
+    private static final String COLUMN_TOTAL_PHASE_C = "total_phase_c";
+    private static final String COLUMN_UNBALANCE_RATE = "unbalance_rate";
+
+    // 创建用户信息表的SQL语句
+    private static final String CREATE_USER_INFO_TABLE = "CREATE TABLE " + TABLE_USER_INFO + " (" +
+            COLUMN_USER_ID + " TEXT PRIMARY KEY, " +  // 用户编号作为主键
+            COLUMN_USER_NAME + " TEXT, " +
+            COLUMN_ROUTE_NUMBER + " TEXT, " +
+            COLUMN_ROUTE_NAME + " TEXT)";
+
+    // 创建用户数据表的SQL模板
+    private static final String CREATE_USER_DATA_TABLE_TEMPLATE = 
+            "CREATE TABLE user_data_%s (" +
+            COLUMN_DATE + " TEXT PRIMARY KEY, " +  // 日期作为主键
+            COLUMN_PHASE + " TEXT, " +
+            COLUMN_PHASE_A_POWER + " REAL, " +
+            COLUMN_PHASE_B_POWER + " REAL, " +
+            COLUMN_PHASE_C_POWER + " REAL)";
+
+    // 创建总电量表的SQL语句
+    private static final String CREATE_TOTAL_POWER_TABLE = 
+            "CREATE TABLE " + TABLE_TOTAL_POWER + " (" +
+            COLUMN_DATE + " TEXT PRIMARY KEY, " +  // 日期作为主键
+            COLUMN_TOTAL_PHASE_A + " REAL, " +
+            COLUMN_TOTAL_PHASE_B + " REAL, " +
+            COLUMN_TOTAL_PHASE_C + " REAL, " +
+            COLUMN_UNBALANCE_RATE + " REAL)";
 
     public DatabaseHelper(Context context)
     {
@@ -27,164 +70,179 @@ public class DatabaseHelper extends SQLiteOpenHelper
     @Override
     public void onCreate(SQLiteDatabase db)
     {
-        // 用户数据表
-        String createTable = "CREATE TABLE " + TABLE_NAME + " ("
-                + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                + "date TEXT,"
-                + "user_id TEXT,"
-                + "user_name TEXT,"
-                + "route_number TEXT,"
-                + "route_name TEXT,"
-                + "phase TEXT,"
-                + "phase_a_power REAL,"
-                + "phase_b_power REAL,"
-                + "phase_c_power REAL)";
-        
-        // 总电量和平衡度表
-        String createTotalPowerTable = "CREATE TABLE " + TABLE_TOTAL_POWER + " ("
-                + "date TEXT PRIMARY KEY,"
-                + "total_phase_a REAL,"
-                + "total_phase_b REAL,"
-                + "total_phase_c REAL,"
-                + "unbalance_rate REAL)";
-
-        db.execSQL(createTable);
-        db.execSQL(createTotalPowerTable);
+        // 创建用户信息表
+        db.execSQL(CREATE_USER_INFO_TABLE);
+        // 创建总电量表
+        db.execSQL(CREATE_TOTAL_POWER_TABLE);
     }
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion)
     {
+        // 空实现
+    }
+
+    // 批量导入数据
+    public void importBatchData(Map<String, Map<String, List<UserData>>> dateUserGroupedData)
+    {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try
+        {
+            // 按日期顺序处理数据
+            List<String> sortedDates = new ArrayList<>(dateUserGroupedData.keySet());
+            Collections.sort(sortedDates);  // 按日期升序排序
+
+            // 遍历每个日期
+            for (String date : sortedDates)
+            {
+                Map<String, List<UserData>> userGroupedData = dateUserGroupedData.get(date);
+                // 处理每个用户的数据
+                processUserData(db, userGroupedData);
+                // 更新总电量
+                updateDailyTotalPower(db, date, userGroupedData);
+            }
+            
+            db.setTransactionSuccessful();
+        }
+        finally
+        {
+            db.endTransaction();
+        }
+    }
+
+    // 处理用户数据
+    private void processUserData(SQLiteDatabase db, Map<String, List<UserData>> userGroupedData)
+    {
+        for (Map.Entry<String, List<UserData>> entry : userGroupedData.entrySet())
+        {
+            String userId = entry.getKey();
+            List<UserData> userDataList = entry.getValue();
+            
+            if (!userDataList.isEmpty())
+            {
+                // 更新用户信息
+                updateUserInfo(db, userId, userDataList.get(0));
+                // 更新用户电量数据
+                updateUserPowerData(db, userId, userDataList);
+            }
+        }
+    }
+
+    // 更新用户基本信息
+    private void updateUserInfo(SQLiteDatabase db, String userId, UserData userData)
+    {
+        ContentValues userInfo = new ContentValues();
+        userInfo.put(COLUMN_USER_ID, userId);
+        userInfo.put(COLUMN_USER_NAME, userData.getUserName());
+        userInfo.put(COLUMN_ROUTE_NUMBER, userData.getRouteNumber());
+        userInfo.put(COLUMN_ROUTE_NAME, userData.getRouteName());
         
+        db.insertWithOnConflict(TABLE_USER_INFO, null, userInfo, SQLiteDatabase.CONFLICT_REPLACE);
     }
 
-    // 导入一天的所有用户数据
-    public void importData(List<UserData> dayData)
+    // 更新用户电量数据
+    private void updateUserPowerData(SQLiteDatabase db, String userId, List<UserData> userDataList)
     {
-        if (dayData == null || dayData.isEmpty()) return;
-
-        SQLiteDatabase db = getWritableDatabase();
-        db.beginTransaction();
-        try
+        // 确保用户数据表存在
+        String userDataTable = "user_data_" + userId;
+        String createTableSQL = String.format(
+            "CREATE TABLE IF NOT EXISTS %s (" +
+            COLUMN_DATE + " TEXT PRIMARY KEY, " +
+            COLUMN_PHASE + " TEXT, " +
+            COLUMN_PHASE_A_POWER + " REAL, " +
+            COLUMN_PHASE_B_POWER + " REAL, " +
+            COLUMN_PHASE_C_POWER + " REAL)", 
+            userDataTable
+        );
+        db.execSQL(createTableSQL);
+        
+        // 插入新数据
+        for (UserData userData : userDataList)
         {
-            String date = dayData.get(0).getDate();
-
-            // 处理每个用户的数据
-            for (UserData data : dayData)
-            {
-                insertData(data);
-            }
-
-            // 所有数据插入完成后，更新该日期的总电量
-            updateTotalPower(date, db);
-            
-            db.setTransactionSuccessful();
-        }
-        finally
-        {
-            db.endTransaction();
-        }
-    }
-
-    // 插入单条数据
-    public void insertData(UserData data)
-    {
-        SQLiteDatabase db = getWritableDatabase();
-        db.beginTransaction();
-        try
-        {
-            // 先删除相同日期和用户ID的数据
-            String deleteExisting = "DELETE FROM " + TABLE_NAME + " WHERE user_id = ? AND date = ?";
-            db.execSQL(deleteExisting, new String[]{data.getUserId(), data.getDate()});
-
-            // 检查用户记录数
-            String countQuery = "SELECT COUNT(*) FROM " + TABLE_NAME + " WHERE user_id = ?";
-            Cursor cursor = db.rawQuery(countQuery, new String[]{data.getUserId()});
-            cursor.moveToFirst();
-            int count = cursor.getInt(0);
-            cursor.close();
-
-            // 如果记录数达到30，删除最早的记录
-            if (count >= 30)
-            {
-                String deleteOldest = "DELETE FROM " + TABLE_NAME 
-                    + " WHERE user_id = ? AND date = (SELECT date FROM " + TABLE_NAME 
-                    + " WHERE user_id = ? ORDER BY date ASC LIMIT 1)";
-                db.execSQL(deleteOldest, new String[]{data.getUserId(), data.getUserId()});
-            }
-
-            // 插入新记录
             ContentValues values = new ContentValues();
-            values.put("date", data.getDate());
-            values.put("user_id", data.getUserId());
-            values.put("user_name", data.getUserName());
-            values.put("route_number", data.getRouteNumber());
-            values.put("route_name", data.getRouteName());
-            values.put("phase", data.getPhase());
-            values.put("phase_a_power", data.getPhaseAPower());
-            values.put("phase_b_power", data.getPhaseBPower());
-            values.put("phase_c_power", data.getPhaseCPower());
+            values.put(COLUMN_DATE, userData.getDate());
+            values.put(COLUMN_PHASE, userData.getPhase());
+            values.put(COLUMN_PHASE_A_POWER, userData.getPhaseAPower());
+            values.put(COLUMN_PHASE_B_POWER, userData.getPhaseBPower());
+            values.put(COLUMN_PHASE_C_POWER, userData.getPhaseCPower());
             
-            db.insert(TABLE_NAME, null, values);
-            
-            db.setTransactionSuccessful();
-        }
-        finally
-        {
-            db.endTransaction();
-        }
-    }
-
-    // 更新date的总电量和平衡度
-    private void updateTotalPower(String date, SQLiteDatabase db)
-    {
-        // 先删除指定日期的数据
-        String deleteQuery = "DELETE FROM " + TABLE_TOTAL_POWER + " WHERE date = ?";
-        db.execSQL(deleteQuery, new String[]{date});
-
-        // 检查总电量记录数
-        String countQuery = "SELECT COUNT(*) FROM " + TABLE_TOTAL_POWER;
-        Cursor countCursor = db.rawQuery(countQuery, null);
-        countCursor.moveToFirst();
-        int count = countCursor.getInt(0);
-        countCursor.close();
-
-        // 如果记录数达到30，删除最早的记录
-        if (count >= 30)
-        {
-            String deleteOldest = "DELETE FROM " + TABLE_TOTAL_POWER 
-                + " WHERE date = (SELECT date FROM " + TABLE_TOTAL_POWER 
-                + " ORDER BY date ASC LIMIT 1)";
-            db.execSQL(deleteOldest);
+            db.insertWithOnConflict(userDataTable, null, values, SQLiteDatabase.CONFLICT_REPLACE);
         }
 
-        // 计算指定日期的总电量
-        String query = "SELECT SUM(phase_a_power) as total_a, "
-                + "SUM(phase_b_power) as total_b, "
-                + "SUM(phase_c_power) as total_c "
-                + "FROM " + TABLE_NAME + " WHERE date = ?";
-
-        Cursor cursor = db.rawQuery(query, new String[]{date});
-
+        // 检查数据行数，如果超过30行，删除最早的数据
+        String countQuery = "SELECT COUNT(*) FROM " + userDataTable;
+        Cursor cursor = db.rawQuery(countQuery, null);
         if (cursor.moveToFirst())
         {
-            double totalA = cursor.getDouble(0);
-            double totalB = cursor.getDouble(1);
-            double totalC = cursor.getDouble(2);
-            double unbalanceRate = calculateUnbalanceRate(totalA, totalB, totalC);
-
-            // 插入新记录
-            ContentValues values = new ContentValues();
-            values.put("date", date);
-            values.put("total_phase_a", totalA);
-            values.put("total_phase_b", totalB);
-            values.put("total_phase_c", totalC);
-            values.put("unbalance_rate", unbalanceRate);
-
-            db.insert(TABLE_TOTAL_POWER, null, values);
+            int count = cursor.getInt(0);
+            if (count > 30)
+            {
+                // 删除最早的数据，保留最新的30条
+                String deleteQuery = String.format(
+                    "DELETE FROM %s WHERE " + COLUMN_DATE + " IN " +
+                    "(SELECT " + COLUMN_DATE + " FROM %s ORDER BY " + COLUMN_DATE + " ASC LIMIT %d)",
+                    userDataTable, userDataTable, count - 30
+                );
+                db.execSQL(deleteQuery);
+            }
         }
         cursor.close();
     }
+
+    // 更新每日总电量
+    private void updateDailyTotalPower(SQLiteDatabase db, String date, Map<String, List<UserData>> userGroupedData)
+    {
+        double totalA = 0, totalB = 0, totalC = 0;
+        
+        // 计算当天所有用户的总电量
+        for (List<UserData> userDataList : userGroupedData.values())
+        {
+            for (UserData userData : userDataList)
+            {
+                totalA += userData.getPhaseAPower();
+                totalB += userData.getPhaseBPower();
+                totalC += userData.getPhaseCPower();
+            }
+        }
+        
+        // 计算不平衡度
+        double unbalanceRate = calculateUnbalanceRate(totalA, totalB, totalC);
+
+        // 插入新的总电量数据
+        ContentValues totalValues = new ContentValues();
+        totalValues.put(COLUMN_DATE, date);
+        totalValues.put(COLUMN_TOTAL_PHASE_A, totalA);
+        totalValues.put(COLUMN_TOTAL_PHASE_B, totalB);
+        totalValues.put(COLUMN_TOTAL_PHASE_C, totalC);
+        totalValues.put(COLUMN_UNBALANCE_RATE, unbalanceRate);
+        
+        db.insertWithOnConflict(TABLE_TOTAL_POWER, null, totalValues, SQLiteDatabase.CONFLICT_REPLACE);
+
+        // 检查总电量表的数据行数，如果超过30行，删除最早的数据
+        String countQuery = "SELECT COUNT(*) FROM " + TABLE_TOTAL_POWER;
+        Cursor cursor = db.rawQuery(countQuery, null);
+        if (cursor.moveToFirst())
+        {
+            int count = cursor.getInt(0);
+            if (count > 30)
+            {
+                // 删除最早的数据，保留最新的30条
+                String deleteQuery = String.format(
+                    "DELETE FROM %s WHERE " + COLUMN_DATE + " IN " +
+                    "(SELECT " + COLUMN_DATE + " FROM %s ORDER BY " + COLUMN_DATE + " ASC LIMIT %d)",
+                    TABLE_TOTAL_POWER, TABLE_TOTAL_POWER, count - 30
+                );
+                db.execSQL(deleteQuery);
+            }
+        }
+        cursor.close();
+    }
+
+
+
+
+    //-----------------------------------辅助函数-----------------------------------
 
     // 计算三相不平衡度
     private double calculateUnbalanceRate(double phaseA, double phaseB, double phaseC)
@@ -196,16 +254,12 @@ public class DatabaseHelper extends SQLiteOpenHelper
         return (maxDiff / avg) * 100;
     }
 
-
-
-    //-----------------------------------辅助函数-----------------------------------
-
     // 获取所有用户ID
     public List<String> getAllUserIds()
     {
         List<String> userIds = new ArrayList<>();
         SQLiteDatabase db = getReadableDatabase();
-        String query = "SELECT DISTINCT user_id FROM " + TABLE_NAME;
+        String query = "SELECT " + COLUMN_USER_ID + " FROM " + TABLE_USER_INFO;
         Cursor cursor = db.rawQuery(query, null);
 
         while (cursor.moveToNext())
@@ -221,12 +275,21 @@ public class DatabaseHelper extends SQLiteOpenHelper
     {
         List<String> dates = new ArrayList<>();
         SQLiteDatabase db = getReadableDatabase();
-        String query = "SELECT DISTINCT date FROM " + TABLE_TOTAL_POWER + " ORDER BY date DESC LIMIT ?";
-        Cursor cursor = db.rawQuery(query, new String[]{String.valueOf(n)});
-
-        while (cursor.moveToNext())
+        
+        // 从总电量表中获取日期
+        String query = "SELECT DISTINCT " + COLUMN_DATE + 
+                      " FROM " + TABLE_TOTAL_POWER + 
+                      " ORDER BY " + COLUMN_DATE + " DESC" +
+                      " LIMIT " + n;
+        
+        Cursor cursor = db.rawQuery(query, null);
+        if (cursor.moveToFirst())
         {
-            dates.add(cursor.getString(0));
+            do
+            {
+                dates.add(cursor.getString(0));
+            }
+            while (cursor.moveToNext());
         }
         cursor.close();
         return dates;
@@ -243,10 +306,13 @@ public class DatabaseHelper extends SQLiteOpenHelper
     public String getPrevDate(String currentDate)
     {
         SQLiteDatabase db = getReadableDatabase();
-
-        String query = "SELECT DISTINCT date FROM " + TABLE_NAME + " WHERE date < ? ORDER BY date DESC LIMIT 1";
+        String query = "SELECT " + COLUMN_DATE + 
+                      " FROM " + TABLE_TOTAL_POWER + 
+                      " WHERE " + COLUMN_DATE + " < ?" +
+                      " ORDER BY " + COLUMN_DATE + " DESC" +
+                      " LIMIT 1";
+                      
         Cursor cursor = db.rawQuery(query, new String[]{currentDate});
-
         String date = null;
         if (cursor.moveToFirst())
         {
@@ -260,10 +326,13 @@ public class DatabaseHelper extends SQLiteOpenHelper
     public String getNextDate(String currentDate)
     {
         SQLiteDatabase db = getReadableDatabase();
-
-        String query = "SELECT DISTINCT date FROM " + TABLE_NAME + " WHERE date > ? ORDER BY date ASC LIMIT 1";
+        String query = "SELECT " + COLUMN_DATE + 
+                      " FROM " + TABLE_TOTAL_POWER + 
+                      " WHERE " + COLUMN_DATE + " > ?" +
+                      " ORDER BY " + COLUMN_DATE + " ASC" +
+                      " LIMIT 1";
+                      
         Cursor cursor = db.rawQuery(query, new String[]{currentDate});
-
         String date = null;
         if (cursor.moveToFirst())
         {
@@ -273,99 +342,130 @@ public class DatabaseHelper extends SQLiteOpenHelper
         return date;
     }
 
+    // 获取指定日期的总电量数据
+    public double[] getTotalPowerByDate(String date)
+    {
+        double[] totalPower = new double[4];  // [A相总量, B相总量, C相总量, 不平衡度]
+        SQLiteDatabase db = getReadableDatabase();
+        
+        String query = "SELECT " + 
+                      COLUMN_TOTAL_PHASE_A + ", " +
+                      COLUMN_TOTAL_PHASE_B + ", " +
+                      COLUMN_TOTAL_PHASE_C + ", " +
+                      COLUMN_UNBALANCE_RATE +
+                      " FROM " + TABLE_TOTAL_POWER + 
+                      " WHERE " + COLUMN_DATE + " = ?";
+                      
+        Cursor cursor = db.rawQuery(query, new String[]{date});
+        if (cursor.moveToFirst())
+        {
+            totalPower[0] = cursor.getDouble(0);  // A相总量
+            totalPower[1] = cursor.getDouble(1);  // B相总量
+            totalPower[2] = cursor.getDouble(2);  // C相总量
+            totalPower[3] = cursor.getDouble(3);  // 不平衡度
+        }
+        cursor.close();
+        return totalPower;
+    }
+
     // 获取指定日期的用户数据
     public List<UserData> getUserDataByDate(String date)
     {
         List<UserData> dataList = new ArrayList<>();
         SQLiteDatabase db = getReadableDatabase();
-        String query = "SELECT * FROM " + TABLE_NAME + " WHERE date = ? ORDER BY user_id";
-        Cursor cursor = db.rawQuery(query, new String[]{date});
-
-        while (cursor.moveToNext())
+        
+        // 获取所有用户ID
+        List<String> userIds = getAllUserIds();
+        
+        for (String userId : userIds)
         {
-            UserData userData = new UserData();
-            int dateIndex = cursor.getColumnIndexOrThrow("date");
-            int userIdIndex = cursor.getColumnIndexOrThrow("user_id");
-            int userNameIndex = cursor.getColumnIndexOrThrow("user_name");
-            int routeNumberIndex = cursor.getColumnIndexOrThrow("route_number");
-            int routeNameIndex = cursor.getColumnIndexOrThrow("route_name");
-            int phaseIndex = cursor.getColumnIndexOrThrow("phase");
-            int phaseAPowerIndex = cursor.getColumnIndexOrThrow("phase_a_power");
-            int phaseBPowerIndex = cursor.getColumnIndexOrThrow("phase_b_power");
-            int phaseCPowerIndex = cursor.getColumnIndexOrThrow("phase_c_power");
-
-            userData.setDate(cursor.getString(dateIndex));
-            userData.setUserId(cursor.getString(userIdIndex));
-            userData.setUserName(cursor.getString(userNameIndex));
-            userData.setRouteNumber(cursor.getString(routeNumberIndex));
-            userData.setRouteName(cursor.getString(routeNameIndex));
-            userData.setPhase(cursor.getString(phaseIndex));
-            userData.setPhaseAPower(cursor.getDouble(phaseAPowerIndex));
-            userData.setPhaseBPower(cursor.getDouble(phaseBPowerIndex));
-            userData.setPhaseCPower(cursor.getDouble(phaseCPowerIndex));
-            dataList.add(userData);
+            // 获取用户信息
+            String userQuery = "SELECT * FROM " + TABLE_USER_INFO + " WHERE " + COLUMN_USER_ID + " = ?";
+            Cursor userCursor = db.rawQuery(userQuery, new String[]{userId});
+            
+            if (userCursor.moveToFirst())
+            {
+                String userName = userCursor.getString(userCursor.getColumnIndex(COLUMN_USER_NAME));
+                String routeNumber = userCursor.getString(userCursor.getColumnIndex(COLUMN_ROUTE_NUMBER));
+                String routeName = userCursor.getString(userCursor.getColumnIndex(COLUMN_ROUTE_NAME));
+                userCursor.close();
+                
+                // 获取用户当天数据
+                String userDataTable = "user_data_" + userId;
+                String dataQuery = "SELECT * FROM " + userDataTable + " WHERE " + COLUMN_DATE + " = ?";
+                Cursor dataCursor = db.rawQuery(dataQuery, new String[]{date});
+                
+                if (dataCursor.moveToFirst())
+                {
+                    UserData userData = new UserData();
+                    userData.setDate(date);
+                    userData.setUserId(userId);
+                    userData.setUserName(userName);
+                    userData.setRouteNumber(routeNumber);
+                    userData.setRouteName(routeName);
+                    userData.setPhase(dataCursor.getString(dataCursor.getColumnIndex(COLUMN_PHASE)));
+                    userData.setPhaseAPower(dataCursor.getDouble(dataCursor.getColumnIndex(COLUMN_PHASE_A_POWER)));
+                    userData.setPhaseBPower(dataCursor.getDouble(dataCursor.getColumnIndex(COLUMN_PHASE_B_POWER)));
+                    userData.setPhaseCPower(dataCursor.getDouble(dataCursor.getColumnIndex(COLUMN_PHASE_C_POWER)));
+                    dataList.add(userData);
+                }
+                dataCursor.close();
+            }
         }
-        cursor.close();
+        
         return dataList;
-    }
-
-    // 获取指定日期的三相总电量和平衡度
-    public double[] getTotalPowerByDate(String date)
-    {
-        double[] totalPower = new double[4];  
-        SQLiteDatabase db = getReadableDatabase();
-        String query = "SELECT total_phase_a, total_phase_b, total_phase_c, unbalance_rate "
-                + "FROM " + TABLE_TOTAL_POWER + " WHERE date = ?";
-        Cursor cursor = db.rawQuery(query, new String[]{date});
-
-        if (cursor.moveToFirst())
-        {
-            totalPower[0] = cursor.getDouble(0);
-            totalPower[1] = cursor.getDouble(1);
-            totalPower[2] = cursor.getDouble(2);
-            totalPower[3] = cursor.getDouble(3);  
-        }
-        cursor.close();
-        return totalPower;
     }
 
     // 获取某用户最近20天的用户数据，用于预测
     public List<UserData> getLastTwentyDaysData(String userId)
     {
         List<UserData> dataList = new ArrayList<>();
-        SQLiteDatabase db = getReadableDatabase();
-        String query = "SELECT * FROM " + TABLE_NAME + " WHERE user_id = ? ORDER BY date DESC LIMIT 20";
-        Cursor cursor = db.rawQuery(query, new String[]{userId});
-
-        while (cursor.moveToNext())
+        SQLiteDatabase db = this.getReadableDatabase();
+        
+        // 获取用户信息
+        String userQuery = "SELECT * FROM " + TABLE_USER_INFO + " WHERE " + COLUMN_USER_ID + " = ?";
+        Cursor userCursor = db.rawQuery(userQuery, new String[]{userId});
+        
+        if (!userCursor.moveToFirst())
         {
-            UserData userData = new UserData();
-            int dateIndex = cursor.getColumnIndexOrThrow("date");
-            int userIdIndex = cursor.getColumnIndexOrThrow("user_id");
-            int userNameIndex = cursor.getColumnIndexOrThrow("user_name");
-            int routeNumberIndex = cursor.getColumnIndexOrThrow("route_number");
-            int routeNameIndex = cursor.getColumnIndexOrThrow("route_name");
-            int phaseIndex = cursor.getColumnIndexOrThrow("phase");
-            int phaseAPowerIndex = cursor.getColumnIndexOrThrow("phase_a_power");
-            int phaseBPowerIndex = cursor.getColumnIndexOrThrow("phase_b_power");
-            int phaseCPowerIndex = cursor.getColumnIndexOrThrow("phase_c_power");
-
-            userData.setDate(cursor.getString(dateIndex));
-            userData.setUserId(cursor.getString(userIdIndex));
-            userData.setUserName(cursor.getString(userNameIndex));
-            userData.setRouteNumber(cursor.getString(routeNumberIndex));
-            userData.setRouteName(cursor.getString(routeNameIndex));
-            userData.setPhase(cursor.getString(phaseIndex));
-            userData.setPhaseAPower(cursor.getDouble(phaseAPowerIndex));
-            userData.setPhaseBPower(cursor.getDouble(phaseBPowerIndex));
-            userData.setPhaseCPower(cursor.getDouble(phaseCPowerIndex));
-            dataList.add(userData);
+            userCursor.close();
+            return dataList;
+        }
+        
+        // 读取用户基本信息
+        String userName = userCursor.getString(userCursor.getColumnIndex(COLUMN_USER_NAME));
+        String routeNumber = userCursor.getString(userCursor.getColumnIndex(COLUMN_ROUTE_NUMBER));
+        String routeName = userCursor.getString(userCursor.getColumnIndex(COLUMN_ROUTE_NAME));
+        userCursor.close();
+        
+        // 获取用户数据
+        String userDataTable = "user_data_" + userId;
+        String dataQuery = "SELECT * FROM " + userDataTable + 
+                          " ORDER BY " + COLUMN_DATE + " DESC" +
+                          " LIMIT 20";
+        
+        Cursor cursor = db.rawQuery(dataQuery, null);
+        if (cursor.moveToFirst())
+        {
+            do
+            {
+                UserData userData = new UserData();
+                userData.setDate(cursor.getString(cursor.getColumnIndex(COLUMN_DATE)));
+                userData.setUserId(userId);
+                userData.setUserName(userName);
+                userData.setRouteNumber(routeNumber);
+                userData.setRouteName(routeName);
+                userData.setPhase(cursor.getString(cursor.getColumnIndex(COLUMN_PHASE)));
+                userData.setPhaseAPower(cursor.getDouble(cursor.getColumnIndex(COLUMN_PHASE_A_POWER)));
+                userData.setPhaseBPower(cursor.getDouble(cursor.getColumnIndex(COLUMN_PHASE_B_POWER)));
+                userData.setPhaseCPower(cursor.getDouble(cursor.getColumnIndex(COLUMN_PHASE_C_POWER)));
+                dataList.add(userData);
+            }
+            while (cursor.moveToNext());
         }
         cursor.close();
         return dataList;
     }
-
-    
 
     
 } 

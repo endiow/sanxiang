@@ -1,5 +1,6 @@
 package com.example.sanxiang;
 
+import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.text.Spannable;
@@ -21,6 +22,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.example.sanxiang.data.UserData;
 import com.example.sanxiang.db.DatabaseHelper;
 import com.example.sanxiang.util.UnbalanceCalculator;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import java.util.List;
 
@@ -69,18 +71,36 @@ public class UserDataActivity extends AppCompatActivity
         Button btnNextDay = findViewById(R.id.btnNextDay);
         EditText etSearch = findViewById(R.id.etSearch);
         Button btnSearch = findViewById(R.id.btnSearch);
-
-        // 前一天按钮
+        
+        // 设置日期导航按钮的点击事件
         btnPrevDay.setOnClickListener(v -> loadPrevDay());
-        // 后一天按钮
         btnNextDay.setOnClickListener(v -> loadNextDay());
-        // 搜索按钮
+        
+        // 设置搜索按钮的点击事件
         btnSearch.setOnClickListener(v -> 
         {
             String userId = etSearch.getText().toString();
             adapter.filter(userId);
         });
-        
+
+        // 设置浮动按钮的点击事件
+        FloatingActionButton fabUserInfo = findViewById(R.id.fabUserInfo);
+        FloatingActionButton fabTotalPower = findViewById(R.id.fabTotalPower);
+
+        fabUserInfo.setOnClickListener(v -> 
+        {
+            Intent intent = new Intent(this, TableViewActivity.class);
+            intent.putExtra(TableViewActivity.EXTRA_TABLE_TYPE, TableViewActivity.TYPE_USER_INFO);
+            startActivity(intent);
+        });
+
+        fabTotalPower.setOnClickListener(v -> 
+        {
+            Intent intent = new Intent(this, TableViewActivity.class);
+            intent.putExtra(TableViewActivity.EXTRA_TABLE_TYPE, TableViewActivity.TYPE_TOTAL_POWER);
+            startActivity(intent);
+        });
+
         // 日期输入完成监听
         tvDate.setOnEditorActionListener((v, actionId, event) -> 
         {

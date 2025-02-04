@@ -1,5 +1,6 @@
 package com.example.sanxiang;
 
+import android.content.Intent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -18,6 +19,12 @@ public class PredictionAdapter extends RecyclerView.Adapter<PredictionAdapter.Vi
 {
     private List<PredictionResult> predictions = new ArrayList<>();
     private List<PredictionResult> allPredictions = new ArrayList<>();  // 用于搜索
+
+    public PredictionAdapter()
+    {
+        predictions = new ArrayList<>();
+        allPredictions = new ArrayList<>();
+    }
 
     public void setPredictions(List<PredictionResult> predictions)
     {
@@ -45,7 +52,7 @@ public class PredictionAdapter extends RecyclerView.Adapter<PredictionAdapter.Vi
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType)
     {
-        View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_user_data, parent, false);
+        View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_prediction, parent, false);
         return new ViewHolder(view);
     }
 
@@ -53,19 +60,32 @@ public class PredictionAdapter extends RecyclerView.Adapter<PredictionAdapter.Vi
     public void onBindViewHolder(@NonNull ViewHolder holder, int position)
     {
         PredictionResult prediction = predictions.get(position);
-        holder.tvUserInfo.setText(String.format("用户编号：%s  用户名称：%s", 
-                                  prediction.getUserId(), prediction.getUserName()));
-        holder.tvRouteInfo.setText(String.format("回路编号：%s  线路名称：%s", 
-                                   prediction.getRouteNumber(), prediction.getRouteName()));
-        holder.tvPhaseInfo.setText(String.format("相位：%s", prediction.getPhase()));
-        holder.tvPowerInfo.setText(String.format("A相电量：%.2f  B相电量：%.2f  C相电量：%.2f",
-                                   prediction.getPredictedPhaseAPower(),
-                                   prediction.getPredictedPhaseBPower(),
-                                   prediction.getPredictedPhaseCPower()));
         
-        // 显示所有信息
-        holder.tvRouteInfo.setVisibility(View.VISIBLE);
-        holder.tvPhaseInfo.setVisibility(View.VISIBLE);
+        // 设置用户信息
+        holder.tvUserInfo.setText(String.format("用户编号：%s  用户名称：%s", 
+            prediction.getUserId(), prediction.getUserName()));
+        
+        // 设置线路信息
+        holder.tvRouteInfo.setText(String.format("回路编号：%s  线路名称：%s", 
+            prediction.getRouteNumber(), prediction.getRouteName()));
+        
+        // 设置相位信息
+        holder.tvPhaseInfo.setText(String.format("相位：%s", prediction.getPhase()));
+        
+        // 设置电量信息
+        holder.tvPowerInfo.setText(String.format("A相电量：%.2f  B相电量：%.2f  C相电量：%.2f",
+            prediction.getPredictedPhaseAPower(),
+            prediction.getPredictedPhaseBPower(),
+            prediction.getPredictedPhaseCPower()));
+
+        // 设置点击事件
+        holder.itemView.setOnClickListener(v -> 
+        {
+            Intent intent = new Intent(v.getContext(), PredictionDetailActivity.class);
+            intent.putExtra("userId", prediction.getUserId());
+            intent.putExtra("userName", prediction.getUserName());
+            v.getContext().startActivity(intent);
+        });
     }
 
     @Override
