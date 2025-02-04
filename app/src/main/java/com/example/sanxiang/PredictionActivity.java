@@ -78,91 +78,117 @@ public class PredictionActivity extends AppCompatActivity
 
     private void loadPredictions()
     {
-        // 首先检查总电量表中的数据量是否足够
-        List<String> dates = dbHelper.getLastNDays(7);
-        if (dates.size() < 7)
+        try
         {
-            Toast.makeText(this, 
-                "数据量不足，至少需要7天的数据才能进行预测。当前仅有 " + dates.size() + " 天数据。", 
-                Toast.LENGTH_LONG).show();
-            return;
-        }
-
-        List<String> userIds = dbHelper.getAllUserIds();
-        List<PredictionResult> predictions = new ArrayList<>();
-        
-        //对每个用户进行预测
-        for (String userId : userIds)
-        {
-            List<UserData> historicalData = dbHelper.getUserLastNDaysData(userId, 20);
-            //至少有7天数据，才进行预测
-            if (historicalData.size() >= 7)
+            // 首先检查总电量表中的数据量是否足够
+            List<String> dates = dbHelper.getLastNDays(7);
+            if (dates.size() < 7)
             {
-                PredictionResult prediction = predictUserPower(historicalData);
-                predictions.add(prediction);
-            }
-        }
-
-        // 如果没有任何用户有足够的数据进行预测
-        if (predictions.isEmpty())
-        {
-            Toast.makeText(this, "没有任何用户具有足够的历史数据进行预测", Toast.LENGTH_LONG).show();
-            return;
-        }
-
-        // 计算总预测电量和不平衡度
-        totalPhaseA = 0;
-        totalPhaseB = 0;
-        totalPhaseC = 0;
-        for (PredictionResult prediction : predictions)
-        {
-            totalPhaseA += prediction.getPredictedPhaseAPower();
-            totalPhaseB += prediction.getPredictedPhaseBPower();
-            totalPhaseC += prediction.getPredictedPhaseCPower();
-        }
-
-        double unbalanceRate = UnbalanceCalculator.calculateUnbalanceRate(totalPhaseA, totalPhaseB, totalPhaseC);
-        String status = UnbalanceCalculator.getUnbalanceStatus(unbalanceRate);
-
-        String totalInfo = String.format(
-            "明日总电量预测：\n" +
-            "A相总量：%.2f\nB相总量：%.2f\nC相总量：%.2f\n" +
-            "三相不平衡度：%.2f%% (%s)",
-            totalPhaseA, totalPhaseB, totalPhaseC, unbalanceRate, status
-        );
-        
-        SpannableString spannableString = new SpannableString(totalInfo);
-        int start = totalInfo.indexOf("三相不平衡度");
-        int end = start + 6;
-
-        // 设置文字样式和点击事件
-        ClickableSpan clickableSpan = new ClickableSpan() 
-        {
-            @Override
-            public void onClick(@NonNull View view) 
-            {
-                UnbalanceCalculator.showCalculationProcess(
-                    PredictionActivity.this,
-                    totalPhaseA, totalPhaseB, totalPhaseC
-                );
+                Toast.makeText(this, 
+                    "数据量不足，至少需要7天的数据才能进行预测。当前仅有 " + dates.size() + " 天数据。", 
+                    Toast.LENGTH_LONG).show();
+                return;
             }
 
-            @Override
-            public void updateDrawState(@NonNull TextPaint ds) 
+            List<String> userIds = dbHelper.getAllUserIds();
+            if (userIds.isEmpty())
             {
-                ds.setColor(Color.rgb(51, 102, 153));  // 蓝色
-                ds.setUnderlineText(false);
-                ds.setFakeBoldText(true);  // 粗体
+                Toast.makeText(this, "没有找到任何用户数据", Toast.LENGTH_LONG).show();
+                return;
             }
-        };
 
-        spannableString.setSpan(clickableSpan, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            List<PredictionResult> predictions = new ArrayList<>();
+            
+            //对每个用户进行预测
+            for (String userId : userIds)
+            {
+                try
+                {
+                    List<UserData> historicalData = dbHelper.getUserLastNDaysData(userId, 20);
+                    //至少有7天数据，才进行预测
+                    if (historicalData != null && historicalData.size() >= 7)
+                    {
+                        PredictionResult prediction = predictUserPower(historicalData);
+                        if (prediction != null)
+                        {
+                            predictions.add(prediction);
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    e.printStackTrace();
+                    // 单个用户预测失败，继续处理下一个用户
+                    continue;
+                }
+            }
 
-        tvTotalPrediction.setText(spannableString);
-        tvTotalPrediction.setMovementMethod(LinkMovementMethod.getInstance());
+            // 如果没有任何用户有足够的数据进行预测
+            if (predictions.isEmpty())
+            {
+                Toast.makeText(this, "没有任何用户具有足够的历史数据进行预测", Toast.LENGTH_LONG).show();
+                return;
+            }
 
-        // 显示各用户预测结果
-        adapter.setPredictions(predictions);
+            // 计算总预测电量和不平衡度
+            totalPhaseA = 0;
+            totalPhaseB = 0;
+            totalPhaseC = 0;
+            for (PredictionResult prediction : predictions)
+            {
+                totalPhaseA += prediction.getPredictedPhaseAPower();
+                totalPhaseB += prediction.getPredictedPhaseBPower();
+                totalPhaseC += prediction.getPredictedPhaseCPower();
+            }
+
+            double unbalanceRate = UnbalanceCalculator.calculateUnbalanceRate(totalPhaseA, totalPhaseB, totalPhaseC);
+            String status = UnbalanceCalculator.getUnbalanceStatus(unbalanceRate);
+
+            String totalInfo = String.format(
+                "明日总电量预测：\n" +
+                "A相总量：%.2f\nB相总量：%.2f\nC相总量：%.2f\n" +
+                "三相不平衡度：%.2f%% (%s)",
+                totalPhaseA, totalPhaseB, totalPhaseC, unbalanceRate, status
+            );
+            
+            SpannableString spannableString = new SpannableString(totalInfo);
+            int start = totalInfo.indexOf("三相不平衡度");
+            int end = start + 6;
+
+            // 设置文字样式和点击事件
+            ClickableSpan clickableSpan = new ClickableSpan() 
+            {
+                @Override
+                public void onClick(@NonNull View view) 
+                {
+                    UnbalanceCalculator.showCalculationProcess(
+                        PredictionActivity.this,
+                        totalPhaseA, totalPhaseB, totalPhaseC
+                    );
+                }
+
+                @Override
+                public void updateDrawState(@NonNull TextPaint ds) 
+                {
+                    ds.setColor(Color.rgb(51, 102, 153));  // 蓝色
+                    ds.setUnderlineText(false);
+                    ds.setFakeBoldText(true);  // 粗体
+                }
+            };
+
+            spannableString.setSpan(clickableSpan, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+
+            tvTotalPrediction.setText(spannableString);
+            tvTotalPrediction.setMovementMethod(LinkMovementMethod.getInstance());
+
+            // 显示各用户预测结果
+            adapter.setPredictions(predictions);
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+            Toast.makeText(this, "预测过程中发生错误：" + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     //预测电量函数
@@ -186,49 +212,57 @@ public class PredictionActivity extends AppCompatActivity
             {
                 UserData data = historicalData.get(i);
                 Map<String, Object> dayData = new HashMap<>();
-                dayData.put("date", data.getDate());
-                dayData.put("phase_a", data.getPhaseAPower());
-                dayData.put("phase_b", data.getPhaseBPower());
-                dayData.put("phase_c", data.getPhaseCPower());
-                pyData.add(0, dayData);  // 添加到列表开头，确保按日期升序排序
+                // 确保日期格式正确
+                String date = data.getDate().trim();
+                if (!date.isEmpty())
+                {
+                    dayData.put("date", date);
+                    // 确保电量数据为正数
+                    dayData.put("phase_a", Math.max(0, data.getPhaseAPower()));
+                    dayData.put("phase_b", Math.max(0, data.getPhaseBPower()));
+                    dayData.put("phase_c", Math.max(0, data.getPhaseCPower()));
+                    pyData.add(dayData);
+                }
             }
             
+            // 检查数据是否有效
+            if (pyData.isEmpty())
+            {
+                throw new Exception("没有有效的历史数据");
+            }
+
             // 调用Python预测
             Python py = Python.getInstance();
             PyObject predictorModule = py.getModule("predictor.power_predictor");
             PyObject predictorClass = predictorModule.get("PowerPredictor");
             PyObject predictor = predictorClass.call();
+            
+            // 直接使用Java的List传递给Python
             PyObject pyResult = predictor.callAttr("predict", pyData);
             
             // 解析预测结果
-            if (pyResult.get("success").toBoolean()) 
+            if (pyResult != null && pyResult.get("success") != null && pyResult.get("success").toBoolean()) 
             {
                 PyObject predictions = pyResult.get("predictions");
-                result.setPredictedPhaseAPower(predictions.get("phase_a").get("value").toDouble());
-                result.setPredictedPhaseBPower(predictions.get("phase_b").get("value").toDouble());
-                result.setPredictedPhaseCPower(predictions.get("phase_c").get("value").toDouble());
+                if (predictions != null)
+                {
+                    result.setPredictedPhaseAPower(predictions.get("phase_a").get("value").toDouble());
+                    result.setPredictedPhaseBPower(predictions.get("phase_b").get("value").toDouble());
+                    result.setPredictedPhaseCPower(predictions.get("phase_c").get("value").toDouble());
+                }
+                else
+                {
+                    throw new Exception("预测结果格式错误");
+                }
             } 
             else 
             {
-                // 如果Python预测失败，使用简单平均作为备选
-                double sumA = 0, sumB = 0, sumC = 0;
-                int count = Math.min(7, historicalData.size());
-                
-                for (int i = 0; i < count; i++) 
-                {
-                    UserData data = historicalData.get(i);
-                    sumA += data.getPhaseAPower();
-                    sumB += data.getPhaseBPower();
-                    sumC += data.getPhaseCPower();
-                }
-                
-                result.setPredictedPhaseAPower(sumA / count);
-                result.setPredictedPhaseBPower(sumB / count);
-                result.setPredictedPhaseCPower(sumC / count);
+                throw new Exception(pyResult != null ? pyResult.get("error").toString() : "预测失败");
             }
         } 
         catch (Exception e) 
         {
+            e.printStackTrace();
             // 发生异常时使用简单平均
             double sumA = 0, sumB = 0, sumC = 0;
             int count = Math.min(7, historicalData.size());

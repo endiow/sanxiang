@@ -23,89 +23,133 @@ class PowerPredictor:
             dict: 包含预测结果的字典
         """
         try:
-            # 转换数据为 DataFrame
-            df = pd.DataFrame(data)
-            df['date'] = pd.to_datetime(df['date'])
-            df = df.sort_values('date')
+            # 将输入数据转换为正确的格式
+            dates = []
+            phase_a = []
+            phase_b = []
+            phase_c = []
             
-            # 获取时间序列数据
-            series_a = df['phase_a'].values
-            series_b = df['phase_b'].values
-            series_c = df['phase_c'].values
+            # 使用range(data.size())遍历Java ArrayList
+            size = data.size()
+            for i in range(size):
+                item = data.get(i)
+                # 获取日期
+                date_val = item.get("date")
+                if date_val is None:
+                    continue
+                dates.append(str(date_val))
+                
+                # 获取电量数据，如果为空则使用0.0
+                try:
+                    phase_a_val = item.get("phase_a")
+                    phase_a.append(float(0.0 if phase_a_val is None else phase_a_val))
+                    
+                    phase_b_val = item.get("phase_b")
+                    phase_b.append(float(0.0 if phase_b_val is None else phase_b_val))
+                    
+                    phase_c_val = item.get("phase_c")
+                    phase_c.append(float(0.0 if phase_c_val is None else phase_c_val))
+                except (ValueError, TypeError):
+                    continue
             
-            # 检查数据长度
-            if len(series_a) < 7:
+            # 检查是否有足够的数据
+            if len(dates) < 14:  # 需要至少两个周期的数据
                 return {
                     'success': False,
-                    'error': '需要至少7天的历史数据'
+                    'error': f'数据量不足，至少需要14天的数据，当前只有{len(dates)}天'
                 }
             
-            if len(series_a) > 25:
-                # 只使用最近25天的数据
-                series_a = series_a[-25:]
-                series_b = series_b[-25:]
-                series_c = series_c[-25:]
+            # 创建DataFrame
+            df = pd.DataFrame({
+                'date': pd.to_datetime(dates),
+                'phase_a': phase_a,
+                'phase_b': phase_b,
+                'phase_c': phase_c
+            })
             
-            # 创建并训练模型
-            # 使用加法模型，考虑趋势和季节性
+            # 确保数据不为空
+            if df.empty:
+                return {
+                    'success': False,
+                    'error': '没有有效的输入数据'
+                }
+            
+            # 设置日期为索引并排序
+            df = df.set_index('date')
+            df = df.sort_index()
+            
+            # 提取时间序列数据
+            series_a = df['phase_a']
+            series_b = df['phase_b']
+            series_c = df['phase_c']
+            
+            # 设置预测模型参数
             model_params = {
+                'seasonal': 'add',
                 'seasonal_periods': 7,  # 周期性为7天
-                'trend': 'add',        # 加法趋势
-                'seasonal': 'add',     # 加法季节性
-                'initialization_method': 'estimated'  # 自动估计初始值
+                'trend': 'add',
+                'initialization_method': 'estimated'  # 使用估计方法初始化
             }
             
-            # A相预测
-            model_a = ExponentialSmoothing(series_a, **model_params).fit()
-            pred_a = model_a.forecast(1)[0]
+            def predict_series(series):
+                # 如果数据全为0，返回0
+                if np.all(series == 0):
+                    return 0.0, {'lower': 0.0, 'upper': 0.0}
+                
+                # 尝试使用指数平滑模型
+                try:
+                    model = ExponentialSmoothing(series, **model_params).fit()
+                    pred = model.forecast(1)[0]
+                    resid = model.resid
+                    std_err = np.std(resid)
+                    z_value = 1.96  # 95% 置信区间
+                    margin = z_value * std_err
+                    interval = {
+                        'lower': float(max(0, pred - margin)),
+                        'upper': float(pred + margin)
+                    }
+                    return float(pred), interval
+                except:
+                    # 如果模型失败，使用简单移动平均
+                    last_week = series[-7:].mean()
+                    std_dev = series[-7:].std()
+                    return float(last_week), {
+                        'lower': float(max(0, last_week - std_dev)),
+                        'upper': float(last_week + std_dev)
+                    }
             
-            # B相预测
-            model_b = ExponentialSmoothing(series_b, **model_params).fit()
-            pred_b = model_b.forecast(1)[0]
-            
-            # C相预测
-            model_c = ExponentialSmoothing(series_c, **model_params).fit()
-            pred_c = model_c.forecast(1)[0]
-            
-            # 计算预测区间
-            confidence = 0.95  # 95% 置信区间
-            
-            def calculate_confidence_interval(model, pred):
-                resid = model.resid  # 获取残差
-                std_err = np.std(resid)  # 计算标准误差
-                z_value = 1.96  # 95% 置信区间的 z 值
-                margin = z_value * std_err
-                return {
-                    'lower': float(max(0, pred - margin)),  # 确保下限不小于0
-                    'upper': float(pred + margin)
-                }
+            # 预测三相电量
+            pred_a, interval_a = predict_series(series_a)
+            pred_b, interval_b = predict_series(series_b)
+            pred_c, interval_c = predict_series(series_c)
             
             # 返回预测结果
             return {
                 'success': True,
                 'predictions': {
                     'phase_a': {
-                        'value': float(pred_a),
-                        'interval': calculate_confidence_interval(model_a, pred_a)
+                        'value': pred_a,
+                        'interval': interval_a
                     },
                     'phase_b': {
-                        'value': float(pred_b),
-                        'interval': calculate_confidence_interval(model_b, pred_b)
+                        'value': pred_b,
+                        'interval': interval_b
                     },
                     'phase_c': {
-                        'value': float(pred_c),
-                        'interval': calculate_confidence_interval(model_c, pred_c)
+                        'value': pred_c,
+                        'interval': interval_c
                     }
                 },
                 'model_info': {
                     'data_points': len(series_a),
-                    'last_date': df['date'].iloc[-1].strftime('%Y-%m-%d'),
-                    'confidence_level': confidence
+                    'last_date': df.index[-1].strftime('%Y-%m-%d'),
+                    'confidence_level': 0.95
                 }
             }
-            
         except Exception as e:
+            import traceback
+            error_msg = str(e) + "\n" + traceback.format_exc()
             return {
                 'success': False,
-                'error': str(e)
+                'error': error_msg
             } 

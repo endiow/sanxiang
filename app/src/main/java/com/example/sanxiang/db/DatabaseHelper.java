@@ -487,68 +487,87 @@ public class DatabaseHelper extends SQLiteOpenHelper
         List<UserData> userDataList = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
         
-        // 首先获取用户基本信息
-        String userQuery = "SELECT user_name, route_number, route_name, phase FROM user_info WHERE user_id = ?";
-        Cursor userCursor = db.rawQuery(userQuery, new String[]{userId});
-        
-        String userName = "";
-        String routeNumber = "";
-        String routeName = "";
-        String phase = "";
-        
-        if (userCursor != null && userCursor.moveToFirst())
+        try
         {
-            int userNameIndex = userCursor.getColumnIndex("user_name");
-            int routeNumberIndex = userCursor.getColumnIndex("route_number");
-            int routeNameIndex = userCursor.getColumnIndex("route_name");
-            int phaseIndex = userCursor.getColumnIndex("phase");
+            // 首先获取用户基本信息
+            String userQuery = "SELECT * FROM " + TABLE_USER_INFO + " WHERE " + COLUMN_USER_ID + " = ?";
+            Cursor userCursor = db.rawQuery(userQuery, new String[]{userId});
             
-            if (userNameIndex >= 0) userName = userCursor.getString(userNameIndex);
-            if (routeNumberIndex >= 0) routeNumber = userCursor.getString(routeNumberIndex);
-            if (routeNameIndex >= 0) routeName = userCursor.getString(routeNameIndex);
-            if (phaseIndex >= 0) phase = userCursor.getString(phaseIndex);
+            String userName = "";
+            String routeNumber = "";
+            String routeName = "";
+            String phase = "";
             
-            userCursor.close();
-            
-            // 获取用户电量数据，按日期降序排序
-            String dataQuery = "SELECT date, phase_a_power, phase_b_power, phase_c_power " + "FROM user_data WHERE user_id = ? ORDER BY date DESC";
-            Cursor dataCursor = db.rawQuery(dataQuery, new String[]{userId});
-            
-            if (dataCursor != null)
+            if (userCursor != null && userCursor.moveToFirst())
             {
-                int dateIndex = dataCursor.getColumnIndex("date");
-                int phaseAPowerIndex = dataCursor.getColumnIndex("phase_a_power");
-                int phaseBPowerIndex = dataCursor.getColumnIndex("phase_b_power");
-                int phaseCPowerIndex = dataCursor.getColumnIndex("phase_c_power");
+                int userNameIndex = userCursor.getColumnIndex(COLUMN_USER_NAME);
+                int routeNumberIndex = userCursor.getColumnIndex(COLUMN_ROUTE_NUMBER);
+                int routeNameIndex = userCursor.getColumnIndex(COLUMN_ROUTE_NAME);
                 
-                // 检查所有必需的列是否存在
-                if (dateIndex >= 0 && phaseAPowerIndex >= 0 && phaseBPowerIndex >= 0 && phaseCPowerIndex >= 0)
+                if (userNameIndex >= 0) userName = userCursor.getString(userNameIndex);
+                if (routeNumberIndex >= 0) routeNumber = userCursor.getString(routeNumberIndex);
+                if (routeNameIndex >= 0) routeName = userCursor.getString(routeNameIndex);
+                
+                userCursor.close();
+                
+                // 获取用户电量数据，按日期降序排序
+                String userDataTable = "user_data_" + userId;
+                String dataQuery = "SELECT " + 
+                    COLUMN_DATE + ", " +
+                    COLUMN_PHASE_A_POWER + ", " +
+                    COLUMN_PHASE_B_POWER + ", " +
+                    COLUMN_PHASE_C_POWER +
+                    " FROM " + userDataTable + 
+                    " ORDER BY " + COLUMN_DATE + " DESC" +
+                    " LIMIT " + n;
+                
+                Cursor dataCursor = db.rawQuery(dataQuery, null);
+                
+                if (dataCursor != null)
                 {
-                    // 只获取前n条记录
-                    int count = 0;
-                    while (dataCursor.moveToNext() && count < n)
+                    int dateIndex = dataCursor.getColumnIndex(COLUMN_DATE);
+                    int phaseAPowerIndex = dataCursor.getColumnIndex(COLUMN_PHASE_A_POWER);
+                    int phaseBPowerIndex = dataCursor.getColumnIndex(COLUMN_PHASE_B_POWER);
+                    int phaseCPowerIndex = dataCursor.getColumnIndex(COLUMN_PHASE_C_POWER);
+                    
+                    // 检查所有必需的列是否存在
+                    if (dateIndex >= 0 && phaseAPowerIndex >= 0 && 
+                        phaseBPowerIndex >= 0 && phaseCPowerIndex >= 0)
                     {
-                        UserData userData = new UserData();
-                        userData.setUserId(userId);
-                        userData.setUserName(userName);
-                        userData.setRouteNumber(routeNumber);
-                        userData.setRouteName(routeName);
-                        userData.setPhase(phase);
-                        userData.setDate(dataCursor.getString(dateIndex));
-                        userData.setPhaseAPower(dataCursor.getDouble(phaseAPowerIndex));
-                        userData.setPhaseBPower(dataCursor.getDouble(phaseBPowerIndex));
-                        userData.setPhaseCPower(dataCursor.getDouble(phaseCPowerIndex));
-                        
-                        userDataList.add(userData);
-                        count++;
+                        while (dataCursor.moveToNext())
+                        {
+                            UserData userData = new UserData();
+                            userData.setUserId(userId);
+                            userData.setUserName(userName);
+                            userData.setRouteNumber(routeNumber);
+                            userData.setRouteName(routeName);
+                            userData.setPhase(phase);
+                            userData.setDate(dataCursor.getString(dateIndex));
+                            userData.setPhaseAPower(dataCursor.getDouble(phaseAPowerIndex));
+                            userData.setPhaseBPower(dataCursor.getDouble(phaseBPowerIndex));
+                            userData.setPhaseCPower(dataCursor.getDouble(phaseCPowerIndex));
+                            
+                            userDataList.add(userData);
+                        }
                     }
+                    dataCursor.close();
                 }
-                dataCursor.close();
+            }
+            if (userCursor != null && !userCursor.isClosed())
+            {
+                userCursor.close();
             }
         }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+        finally
+        {
+            db.close();
+        }
         
-        db.close();
-        return userDataList;  // 如果数据不足n条，返回所有可用数据
+        return userDataList;
     }
 
     
