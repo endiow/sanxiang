@@ -25,6 +25,8 @@
             </intent-filter>
         </activity>
         <activity
+            android:name=".TestResultActivity" />
+        <activity
             android:name=".UserDataActivity"
             android:exported="false"/>
         <activity android:name=".PredictionActivity" />

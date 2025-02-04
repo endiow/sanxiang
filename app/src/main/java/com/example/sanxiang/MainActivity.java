@@ -9,6 +9,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.widget.Button;
 import android.widget.Toast;
+import android.widget.TextView;
 
 import androidx.activity.EdgeToEdge;
 import androidx.activity.result.ActivityResultLauncher;
@@ -29,6 +30,9 @@ import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter;
+import com.chaquo.python.PyObject;
+import com.chaquo.python.Python;
+import com.chaquo.python.android.AndroidPlatform;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -45,6 +49,11 @@ public class MainActivity extends AppCompatActivity
     private DatabaseHelper dbHelper;
     private LineChart lineChart;
     private ActivityResultLauncher<Intent> filePickerLauncher;
+    private Button btnImportData;
+    private Button btnViewData;
+    private Button btnPredict;
+    private Button btnAdjustPhase;
+    private TextView textView;
 
     // 初始化界面、设置布局和基本配置
     @Override
@@ -107,6 +116,9 @@ public class MainActivity extends AppCompatActivity
                     }
                 }
             });
+
+        // 测试 Python 环境
+        testPythonEnvironment();
     }
 
     //初始化图表
@@ -152,10 +164,11 @@ public class MainActivity extends AppCompatActivity
     //初始化按钮
     private void setupButtons()
     {
-        Button btnImportData = findViewById(R.id.btnImportData);
-        Button btnViewData = findViewById(R.id.btnViewData);
-        Button btnPredict = findViewById(R.id.btnPredict);
-        Button btnAdjustPhase = findViewById(R.id.btnAdjustPhase);
+        btnImportData = findViewById(R.id.btnImportData);
+        btnViewData = findViewById(R.id.btnViewData);
+        btnPredict = findViewById(R.id.btnPredict);
+        btnAdjustPhase = findViewById(R.id.btnAdjustPhase);
+        textView = findViewById(R.id.textView);
 
         btnImportData.setOnClickListener(v -> checkPermissionAndOpenPicker());
         btnViewData.setOnClickListener(v -> 
@@ -376,5 +389,25 @@ public class MainActivity extends AppCompatActivity
         LineData lineData = new LineData(setA, setB, setC);
         lineChart.setData(lineData);
         lineChart.invalidate();
+    }
+
+    private void testPythonEnvironment() 
+    {
+        try 
+        {
+            // 初始化 Python
+            if (!Python.isStarted()) 
+            {
+                Python.start(new AndroidPlatform(this));
+            }
+            
+            // 启动测试结果界面
+            Intent intent = new Intent(this, TestResultActivity.class);
+            startActivity(intent);
+        } 
+        catch (Exception e) 
+        {
+            textView.setText("Python 环境初始化错误：" + e.getMessage());
+        }
     }
 }
