@@ -40,8 +40,8 @@ public class TestResultActivity extends AppCompatActivity
         try 
         {
             Python py = Python.getInstance();
-            PyObject testModule = py.getModule("test");
-            PyObject result = testModule.callAttr("main");
+            PyObject testModule = py.getModule("predictor.pytest");
+            PyObject result = testModule.callAttr("test_environment");
             
             // 解析测试结果
             JSONObject jsonResult = new JSONObject(result.toString());

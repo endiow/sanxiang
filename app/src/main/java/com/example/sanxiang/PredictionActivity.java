@@ -20,9 +20,14 @@ import com.example.sanxiang.data.PredictionResult;
 import com.example.sanxiang.data.UserData;
 import com.example.sanxiang.db.DatabaseHelper;
 import com.example.sanxiang.util.UnbalanceCalculator;
+import com.chaquo.python.PyObject;
+import com.chaquo.python.Python;
+import com.chaquo.python.android.AndroidPlatform;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import androidx.annotation.NonNull;
 
@@ -43,6 +48,12 @@ public class PredictionActivity extends AppCompatActivity
     {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_prediction);
+
+        // 初始化Python环境
+        if (!Python.isStarted()) 
+        {
+            Python.start(new AndroidPlatform(this));
+        }
 
         dbHelper = new DatabaseHelper(this);
         tvTotalPrediction = findViewById(R.id.tvTotalPrediction);
@@ -149,21 +160,72 @@ public class PredictionActivity extends AppCompatActivity
         result.setRouteName(latestData.getRouteName());
         result.setPhase(latestData.getPhase());
         
-        // 计算预测电量
-        double sumA = 0, sumB = 0, sumC = 0;
-        int count = Math.min(7, historicalData.size());
-        
-        for (int i = 0; i < count; i++)
+        try 
         {
-            UserData data = historicalData.get(i);
-            sumA += data.getPhaseAPower();
-            sumB += data.getPhaseBPower();
-            sumC += data.getPhaseCPower();
+            // 准备数据
+            List<Map<String, Object>> pyData = new ArrayList<>();
+            for (UserData data : historicalData) 
+            {
+                Map<String, Object> dayData = new HashMap<>();
+                dayData.put("date", data.getDate());
+                dayData.put("phase_a", data.getPhaseAPower());
+                dayData.put("phase_b", data.getPhaseBPower());
+                dayData.put("phase_c", data.getPhaseCPower());
+                pyData.add(dayData);
+            }
+            
+            // 调用Python预测
+            Python py = Python.getInstance();
+            PyObject predictorModule = py.getModule("predictor.power_predictor");
+            PyObject predictorClass = predictorModule.get("PowerPredictor");
+            PyObject predictor = predictorClass.call();
+            PyObject pyResult = predictor.callAttr("predict", pyData);
+            
+            // 解析预测结果
+            if (pyResult.get("success").toBoolean()) 
+            {
+                PyObject predictions = pyResult.get("predictions");
+                result.setPredictedPhaseAPower(predictions.get("phase_a").get("value").toDouble());
+                result.setPredictedPhaseBPower(predictions.get("phase_b").get("value").toDouble());
+                result.setPredictedPhaseCPower(predictions.get("phase_c").get("value").toDouble());
+            } 
+            else 
+            {
+                // 如果Python预测失败，使用简单平均作为备选
+                double sumA = 0, sumB = 0, sumC = 0;
+                int count = Math.min(7, historicalData.size());
+                
+                for (int i = 0; i < count; i++) 
+                {
+                    UserData data = historicalData.get(i);
+                    sumA += data.getPhaseAPower();
+                    sumB += data.getPhaseBPower();
+                    sumC += data.getPhaseCPower();
+                }
+                
+                result.setPredictedPhaseAPower(sumA / count);
+                result.setPredictedPhaseBPower(sumB / count);
+                result.setPredictedPhaseCPower(sumC / count);
+            }
+        } 
+        catch (Exception e) 
+        {
+            // 发生异常时使用简单平均
+            double sumA = 0, sumB = 0, sumC = 0;
+            int count = Math.min(7, historicalData.size());
+            
+            for (int i = 0; i < count; i++) 
+            {
+                UserData data = historicalData.get(i);
+                sumA += data.getPhaseAPower();
+                sumB += data.getPhaseBPower();
+                sumC += data.getPhaseCPower();
+            }
+            
+            result.setPredictedPhaseAPower(sumA / count);
+            result.setPredictedPhaseBPower(sumB / count);
+            result.setPredictedPhaseCPower(sumC / count);
         }
-        
-        result.setPredictedPhaseAPower(sumA / count);
-        result.setPredictedPhaseBPower(sumB / count);
-        result.setPredictedPhaseCPower(sumC / count);
         
         return result;
     }
