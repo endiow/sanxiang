@@ -63,20 +63,20 @@ public class PredictionAdapter extends RecyclerView.Adapter<PredictionAdapter.Vi
         
         // 设置用户信息
         holder.tvUserInfo.setText(String.format("用户编号：%s  用户名称：%s", 
-            prediction.getUserId(), prediction.getUserName()));
+                                  prediction.getUserId(), prediction.getUserName()));
         
         // 设置线路信息
         holder.tvRouteInfo.setText(String.format("回路编号：%s  线路名称：%s", 
-            prediction.getRouteNumber(), prediction.getRouteName()));
+                                   prediction.getRouteNumber(), prediction.getRouteName()));
         
         // 设置相位信息
         holder.tvPhaseInfo.setText(String.format("相位：%s", prediction.getPhase()));
         
         // 设置电量信息
         holder.tvPowerInfo.setText(String.format("A相电量：%.2f  B相电量：%.2f  C相电量：%.2f",
-            prediction.getPredictedPhaseAPower(),
-            prediction.getPredictedPhaseBPower(),
-            prediction.getPredictedPhaseCPower()));
+                                   prediction.getPredictedPhaseAPower(),
+                                   prediction.getPredictedPhaseBPower(),
+                                   prediction.getPredictedPhaseCPower()));
 
         // 设置点击事件
         holder.itemView.setOnClickListener(v -> 

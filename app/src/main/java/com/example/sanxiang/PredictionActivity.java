@@ -11,6 +11,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -77,19 +78,36 @@ public class PredictionActivity extends AppCompatActivity
 
     private void loadPredictions()
     {
+        // 首先检查总电量表中的数据量是否足够
+        List<String> dates = dbHelper.getLastNDays(7);
+        if (dates.size() < 7)
+        {
+            Toast.makeText(this, 
+                "数据量不足，至少需要7天的数据才能进行预测。当前仅有 " + dates.size() + " 天数据。", 
+                Toast.LENGTH_LONG).show();
+            return;
+        }
+
         List<String> userIds = dbHelper.getAllUserIds();
         List<PredictionResult> predictions = new ArrayList<>();
         
         //对每个用户进行预测
         for (String userId : userIds)
         {
-            List<UserData> historicalData = dbHelper.getLastTwentyDaysData(userId);
+            List<UserData> historicalData = dbHelper.getUserLastNDaysData(userId, 20);
             //至少有7天数据，才进行预测
             if (historicalData.size() >= 7)
             {
                 PredictionResult prediction = predictUserPower(historicalData);
                 predictions.add(prediction);
             }
+        }
+
+        // 如果没有任何用户有足够的数据进行预测
+        if (predictions.isEmpty())
+        {
+            Toast.makeText(this, "没有任何用户具有足够的历史数据进行预测", Toast.LENGTH_LONG).show();
+            return;
         }
 
         // 计算总预测电量和不平衡度

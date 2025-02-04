@@ -99,7 +99,7 @@ public class PredictionDetailActivity extends AppCompatActivity
     private void loadDataAndPredict() 
     {
         // 获取历史数据
-        List<UserData> historicalData = dbHelper.getLastTwentyDaysData(userId);
+        List<UserData> historicalData = dbHelper.getUserLastNDaysData(userId,7);
         if (historicalData.isEmpty()) 
         {
             tvPredictionProcess.setText("没有找到历史数据");

@@ -48,15 +48,29 @@ public class TableViewActivity extends AppCompatActivity
         content.append("------------------------------------------------\n");
 
         Cursor cursor = db.query("user_info", null, null, null, null, null, "user_id ASC");
-        while (cursor.moveToNext())
+        
+        int userIdIndex = cursor.getColumnIndex("user_id");
+        int userNameIndex = cursor.getColumnIndex("user_name");
+        int routeNumberIndex = cursor.getColumnIndex("route_number");
+        int routeNameIndex = cursor.getColumnIndex("route_name");
+        
+        // 检查所有列是否都存在
+        if (userIdIndex >= 0 && userNameIndex >= 0 && routeNumberIndex >= 0 && routeNameIndex >= 0)
         {
-            String userId = cursor.getString(cursor.getColumnIndex("user_id"));
-            String userName = cursor.getString(cursor.getColumnIndex("user_name"));
-            String routeNumber = cursor.getString(cursor.getColumnIndex("route_number"));
-            String routeName = cursor.getString(cursor.getColumnIndex("route_name"));
+            while (cursor.moveToNext())
+            {
+                String userId = cursor.getString(userIdIndex);
+                String userName = cursor.getString(userNameIndex);
+                String routeNumber = cursor.getString(routeNumberIndex);
+                String routeName = cursor.getString(routeNameIndex);
 
-            content.append(String.format("%-15s %-15s %-15s %-15s\n",
-                userId, userName, routeNumber, routeName));
+                content.append(String.format("%-15s %-15s %-15s %-15s\n",
+                    userId, userName, routeNumber, routeName));
+            }
+        }
+        else
+        {
+            content.append("表结构错误：缺少必要的列");
         }
         cursor.close();
 
@@ -72,16 +86,32 @@ public class TableViewActivity extends AppCompatActivity
         content.append("------------------------------------------------\n");
 
         Cursor cursor = db.query("total_power", null, null, null, null, null, "date DESC");
-        while (cursor.moveToNext())
+        
+        int dateIndex = cursor.getColumnIndex("date");
+        int totalAIndex = cursor.getColumnIndex("total_phase_a");
+        int totalBIndex = cursor.getColumnIndex("total_phase_b");
+        int totalCIndex = cursor.getColumnIndex("total_phase_c");
+        int unbalanceRateIndex = cursor.getColumnIndex("unbalance_rate");
+        
+        // 检查所有列是否都存在
+        if (dateIndex >= 0 && totalAIndex >= 0 && totalBIndex >= 0 && 
+            totalCIndex >= 0 && unbalanceRateIndex >= 0)
         {
-            String date = cursor.getString(cursor.getColumnIndex("date"));
-            double totalA = cursor.getDouble(cursor.getColumnIndex("total_phase_a"));
-            double totalB = cursor.getDouble(cursor.getColumnIndex("total_phase_b"));
-            double totalC = cursor.getDouble(cursor.getColumnIndex("total_phase_c"));
-            double unbalanceRate = cursor.getDouble(cursor.getColumnIndex("unbalance_rate"));
+            while (cursor.moveToNext())
+            {
+                String date = cursor.getString(dateIndex);
+                double totalA = cursor.getDouble(totalAIndex);
+                double totalB = cursor.getDouble(totalBIndex);
+                double totalC = cursor.getDouble(totalCIndex);
+                double unbalanceRate = cursor.getDouble(unbalanceRateIndex);
 
-            content.append(String.format("%-12s %-10.2f %-10.2f %-10.2f %-10.2f%%\n",
-                date, totalA, totalB, totalC, unbalanceRate));
+                content.append(String.format("%-12s %-10.2f %-10.2f %-10.2f %-10.2f%%\n",
+                    date, totalA, totalB, totalC, unbalanceRate));
+            }
+        }
+        else
+        {
+            content.append("表结构错误：缺少必要的列");
         }
         cursor.close();
 

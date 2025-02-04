@@ -75,31 +75,6 @@ public class UserDataActivity extends AppCompatActivity
         // 设置日期导航按钮的点击事件
         btnPrevDay.setOnClickListener(v -> loadPrevDay());
         btnNextDay.setOnClickListener(v -> loadNextDay());
-        
-        // 设置搜索按钮的点击事件
-        btnSearch.setOnClickListener(v -> 
-        {
-            String userId = etSearch.getText().toString();
-            adapter.filter(userId);
-        });
-
-        // 设置浮动按钮的点击事件
-        FloatingActionButton fabUserInfo = findViewById(R.id.fabUserInfo);
-        FloatingActionButton fabTotalPower = findViewById(R.id.fabTotalPower);
-
-        fabUserInfo.setOnClickListener(v -> 
-        {
-            Intent intent = new Intent(this, TableViewActivity.class);
-            intent.putExtra(TableViewActivity.EXTRA_TABLE_TYPE, TableViewActivity.TYPE_USER_INFO);
-            startActivity(intent);
-        });
-
-        fabTotalPower.setOnClickListener(v -> 
-        {
-            Intent intent = new Intent(this, TableViewActivity.class);
-            intent.putExtra(TableViewActivity.EXTRA_TABLE_TYPE, TableViewActivity.TYPE_TOTAL_POWER);
-            startActivity(intent);
-        });
 
         // 日期输入完成监听
         tvDate.setOnEditorActionListener((v, actionId, event) -> 
@@ -132,6 +107,59 @@ public class UserDataActivity extends AppCompatActivity
                 }
             }
         });
+        
+        // 设置搜索按钮的点击事件
+        btnSearch.setOnClickListener(v -> 
+        {
+            String userId = etSearch.getText().toString();
+            adapter.filter(userId);
+        });
+
+        // 设置搜索框的回车键监听
+        etSearch.setOnEditorActionListener((v, actionId, event) -> 
+        {
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE ||
+                actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH ||
+                (event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ENTER))
+            {
+                String userId = etSearch.getText().toString();
+                adapter.filter(userId);
+                return true;
+            }
+            return false;
+        });
+
+        // 设置搜索框失去焦点时的监听
+        etSearch.setOnFocusChangeListener((v, hasFocus) -> 
+        {
+            if (!hasFocus)
+            {
+                String userId = etSearch.getText().toString();
+                adapter.filter(userId);
+            }
+        });
+
+        // 设置浮动按钮的点击事件
+        FloatingActionButton fabUserInfo = findViewById(R.id.fabUserInfo);
+        FloatingActionButton fabTotalPower = findViewById(R.id.fabTotalPower);
+
+        // 用户信息表
+        fabUserInfo.setOnClickListener(v -> 
+        {
+            Intent intent = new Intent(this, TableViewActivity.class);
+            intent.putExtra(TableViewActivity.EXTRA_TABLE_TYPE, TableViewActivity.TYPE_USER_INFO);
+            startActivity(intent);
+        }); 
+
+        // 总电量表
+        fabTotalPower.setOnClickListener(v -> 
+        {
+            Intent intent = new Intent(this, TableViewActivity.class);
+            intent.putExtra(TableViewActivity.EXTRA_TABLE_TYPE, TableViewActivity.TYPE_TOTAL_POWER);
+            startActivity(intent);
+        });
+
+        
     }
 
     // 验证日期格式
@@ -175,6 +203,13 @@ public class UserDataActivity extends AppCompatActivity
                 displayTotalPower(totalPower);
                 List<UserData> userDataList = dbHelper.getUserDataByDate(date);
                 adapter.setData(userDataList);
+                
+                // 保持搜索状态
+                String searchText = ((EditText)findViewById(R.id.etSearch)).getText().toString();
+                if (!searchText.isEmpty())
+                {
+                    adapter.filter(searchText);
+                }
             }
             else
             {

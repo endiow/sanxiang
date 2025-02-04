@@ -239,8 +239,37 @@ public class DatabaseHelper extends SQLiteOpenHelper
         cursor.close();
     }
 
-
-
+    // 清空所有数据
+    public void clearAllData()
+    {
+        SQLiteDatabase db = this.getWritableDatabase();
+        
+        // 先获取所有用户ID
+        List<String> userIds = getAllUserIds();
+        
+        db.beginTransaction();
+        try
+        {
+            // 删除所有用户数据表
+            for (String userId : userIds)
+            {
+                String userDataTable = "user_data_" + userId;
+                db.execSQL("DROP TABLE IF EXISTS " + userDataTable);
+            }
+            
+            // 删除用户信息表中的所有数据
+            db.delete(TABLE_USER_INFO, null, null);
+            
+            // 删除总电量表中的所有数据
+            db.delete(TABLE_TOTAL_POWER, null, null);
+            
+            db.setTransactionSuccessful();
+        }
+        finally
+        {
+            db.endTransaction();
+        }
+    }
 
     //-----------------------------------辅助函数-----------------------------------
 
@@ -416,55 +445,74 @@ public class DatabaseHelper extends SQLiteOpenHelper
         return dataList;
     }
 
-    // 获取某用户最近20天的用户数据，用于预测
-    public List<UserData> getLastTwentyDaysData(String userId)
+    // 获取指定用户最近n天的用电量数据
+    public List<UserData> getUserLastNDaysData(String userId, int n)
     {
-        List<UserData> dataList = new ArrayList<>();
+        List<UserData> userDataList = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
         
-        // 获取用户信息
-        String userQuery = "SELECT * FROM " + TABLE_USER_INFO + " WHERE " + COLUMN_USER_ID + " = ?";
+        // 首先获取用户基本信息
+        String userQuery = "SELECT user_name, route_number, route_name, phase FROM user_info WHERE user_id = ?";
         Cursor userCursor = db.rawQuery(userQuery, new String[]{userId});
         
-        if (!userCursor.moveToFirst())
+        String userName = "";
+        String routeNumber = "";
+        String routeName = "";
+        String phase = "";
+        
+        if (userCursor != null && userCursor.moveToFirst())
         {
+            int userNameIndex = userCursor.getColumnIndex("user_name");
+            int routeNumberIndex = userCursor.getColumnIndex("route_number");
+            int routeNameIndex = userCursor.getColumnIndex("route_name");
+            int phaseIndex = userCursor.getColumnIndex("phase");
+            
+            if (userNameIndex >= 0) userName = userCursor.getString(userNameIndex);
+            if (routeNumberIndex >= 0) routeNumber = userCursor.getString(routeNumberIndex);
+            if (routeNameIndex >= 0) routeName = userCursor.getString(routeNameIndex);
+            if (phaseIndex >= 0) phase = userCursor.getString(phaseIndex);
+            
             userCursor.close();
-            return dataList;
-        }
-        
-        // 读取用户基本信息
-        String userName = userCursor.getString(userCursor.getColumnIndex(COLUMN_USER_NAME));
-        String routeNumber = userCursor.getString(userCursor.getColumnIndex(COLUMN_ROUTE_NUMBER));
-        String routeName = userCursor.getString(userCursor.getColumnIndex(COLUMN_ROUTE_NAME));
-        userCursor.close();
-        
-        // 获取用户数据
-        String userDataTable = "user_data_" + userId;
-        String dataQuery = "SELECT * FROM " + userDataTable + 
-                          " ORDER BY " + COLUMN_DATE + " DESC" +
-                          " LIMIT 20";
-        
-        Cursor cursor = db.rawQuery(dataQuery, null);
-        if (cursor.moveToFirst())
-        {
-            do
+            
+            // 获取用户电量数据，按日期降序排序
+            String dataQuery = "SELECT date, phase_a_power, phase_b_power, phase_c_power " + "FROM user_data WHERE user_id = ? ORDER BY date DESC";
+            Cursor dataCursor = db.rawQuery(dataQuery, new String[]{userId});
+            
+            if (dataCursor != null)
             {
-                UserData userData = new UserData();
-                userData.setDate(cursor.getString(cursor.getColumnIndex(COLUMN_DATE)));
-                userData.setUserId(userId);
-                userData.setUserName(userName);
-                userData.setRouteNumber(routeNumber);
-                userData.setRouteName(routeName);
-                userData.setPhase(cursor.getString(cursor.getColumnIndex(COLUMN_PHASE)));
-                userData.setPhaseAPower(cursor.getDouble(cursor.getColumnIndex(COLUMN_PHASE_A_POWER)));
-                userData.setPhaseBPower(cursor.getDouble(cursor.getColumnIndex(COLUMN_PHASE_B_POWER)));
-                userData.setPhaseCPower(cursor.getDouble(cursor.getColumnIndex(COLUMN_PHASE_C_POWER)));
-                dataList.add(userData);
+                int dateIndex = dataCursor.getColumnIndex("date");
+                int phaseAPowerIndex = dataCursor.getColumnIndex("phase_a_power");
+                int phaseBPowerIndex = dataCursor.getColumnIndex("phase_b_power");
+                int phaseCPowerIndex = dataCursor.getColumnIndex("phase_c_power");
+                
+                // 检查所有必需的列是否存在
+                if (dateIndex >= 0 && phaseAPowerIndex >= 0 && phaseBPowerIndex >= 0 && phaseCPowerIndex >= 0)
+                {
+                    // 只获取前n条记录
+                    int count = 0;
+                    while (dataCursor.moveToNext() && count < n)
+                    {
+                        UserData userData = new UserData();
+                        userData.setUserId(userId);
+                        userData.setUserName(userName);
+                        userData.setRouteNumber(routeNumber);
+                        userData.setRouteName(routeName);
+                        userData.setPhase(phase);
+                        userData.setDate(dataCursor.getString(dateIndex));
+                        userData.setPhaseAPower(dataCursor.getDouble(phaseAPowerIndex));
+                        userData.setPhaseBPower(dataCursor.getDouble(phaseBPowerIndex));
+                        userData.setPhaseCPower(dataCursor.getDouble(phaseCPowerIndex));
+                        
+                        userDataList.add(userData);
+                        count++;
+                    }
+                }
+                dataCursor.close();
             }
-            while (cursor.moveToNext());
         }
-        cursor.close();
-        return dataList;
+        
+        db.close();
+        return userDataList;  // 如果数据不足n条，返回所有可用数据
     }
 
     

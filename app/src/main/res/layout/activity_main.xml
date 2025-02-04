@@ -1,16 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="8dp">
 
     <TextView
         android:id="@+id/textView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp"
+        android:layout_marginBottom="4dp"
         android:textSize="14sp"/>
 
     <com.github.mikephil.charting.charts.LineChart
@@ -18,38 +19,111 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:layout_marginBottom="16dp"/>
+        android:layout_marginBottom="8dp"/>
 
-    <LinearLayout
+    <GridLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:columnCount="3"
+        android:rowCount="2"
+        android:alignmentMode="alignMargins"
+        android:columnOrderPreserved="false"
+        android:useDefaultMargins="true">
 
-        <Button
-            android:id="@+id/btnImportData"
-            android:layout_width="match_parent"
+        <androidx.cardview.widget.CardView
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:text="导入用户数据"/>
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="2dp">
 
-        <Button
-            android:id="@+id/btnViewData"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:text="查看用户数据"/>
+            <Button
+                android:id="@+id/btnImportData"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="导入数据"
+                android:drawableTop="@drawable/ic_import"
+                android:padding="8dp"
+                android:textSize="12sp"
+                style="@style/Widget.MaterialComponents.Button.TextButton"/>
+        </androidx.cardview.widget.CardView>
 
-        <Button
-            android:id="@+id/btnPredict"
-            android:layout_width="match_parent"
+        <androidx.cardview.widget.CardView
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:text="预测明日电量"/>
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="2dp">
 
-        <Button
-            android:id="@+id/btnAdjustPhase"
-            android:layout_width="match_parent"
+            <Button
+                android:id="@+id/btnViewData"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="查看数据"
+                android:drawableTop="@drawable/ic_view"
+                android:padding="8dp"
+                android:textSize="12sp"
+                style="@style/Widget.MaterialComponents.Button.TextButton"/>
+        </androidx.cardview.widget.CardView>
+
+        <androidx.cardview.widget.CardView
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="调整相位"/>
-    </LinearLayout>
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="2dp">
+
+            <Button
+                android:id="@+id/btnPredict"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="预测电量"
+                android:drawableTop="@drawable/ic_predict"
+                android:padding="8dp"
+                android:textSize="12sp"
+                style="@style/Widget.MaterialComponents.Button.TextButton"/>
+        </androidx.cardview.widget.CardView>
+
+        <androidx.cardview.widget.CardView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="2dp">
+
+            <Button
+                android:id="@+id/btnAdjustPhase"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="相位调整"
+                android:drawableTop="@drawable/ic_adjust"
+                android:padding="8dp"
+                android:textSize="12sp"
+                style="@style/Widget.MaterialComponents.Button.TextButton"/>
+        </androidx.cardview.widget.CardView>
+
+        <androidx.cardview.widget.CardView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="2dp">
+
+            <Button
+                android:id="@+id/btnClearData"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="清空数据"
+                android:drawableTop="@drawable/ic_delete"
+                android:padding="8dp"
+                android:textSize="12sp"
+                style="@style/Widget.MaterialComponents.Button.TextButton"/>
+        </androidx.cardview.widget.CardView>
+
+    </GridLayout>
 </LinearLayout>

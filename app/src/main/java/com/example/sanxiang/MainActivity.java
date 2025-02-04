@@ -2,10 +2,8 @@ package com.example.sanxiang;
 
 import android.Manifest;
 import android.content.ClipData;
-import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.database.sqlite.SQLiteDatabase;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -32,7 +30,6 @@ import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter;
-import com.chaquo.python.PyObject;
 import com.chaquo.python.Python;
 import com.chaquo.python.android.AndroidPlatform;
 
@@ -55,6 +52,7 @@ public class MainActivity extends AppCompatActivity
     private Button btnViewData;
     private Button btnPredict;
     private Button btnAdjustPhase;
+    private Button btnClearData;
     private TextView textView;
 
     // 初始化界面、设置布局和基本配置
@@ -121,6 +119,14 @@ public class MainActivity extends AppCompatActivity
 
         // 测试 Python 环境
         //testPythonEnvironment();
+    }
+
+    @Override
+    protected void onResume()
+    {
+        super.onResume();
+        // 每次返回主界面时更新图表数据
+        updateChartData();
     }
 
     //测试Python环境
@@ -191,6 +197,7 @@ public class MainActivity extends AppCompatActivity
         btnViewData = findViewById(R.id.btnViewData);
         btnPredict = findViewById(R.id.btnPredict);
         btnAdjustPhase = findViewById(R.id.btnAdjustPhase);
+        btnClearData = findViewById(R.id.btnClearData);
         textView = findViewById(R.id.textView);
 
         btnImportData.setOnClickListener(v -> checkPermissionAndOpenPicker());
@@ -205,6 +212,9 @@ public class MainActivity extends AppCompatActivity
             startActivity(intent);
         });
         btnAdjustPhase.setOnClickListener(v -> handleAdjustPhase());
+        
+        // 添加清空数据按钮的点击事件
+        btnClearData.setOnClickListener(v -> handleClearData());
     }
 
 
@@ -424,6 +434,24 @@ public class MainActivity extends AppCompatActivity
         Toast.makeText(this, "相位调整功能待实现", Toast.LENGTH_SHORT).show();
     }
 
+    //-----------------------------------清空数据-----------------------------------
+    private void handleClearData()
+    {
+        // 弹出确认对话框
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("确认删除")
+            .setMessage("确定要删除所有数据吗？此操作不可恢复！")
+            .setPositiveButton("确定", (dialog, which) -> 
+            {
+                // 执行删除操作
+                dbHelper.clearAllData();
+                // 更新图表
+                updateChartData();
+                Toast.makeText(this, "所有数据已清空", Toast.LENGTH_SHORT).show();
+            })
+            .setNegativeButton("取消", null)
+            .show();
+    }
 
     //-----------------------------------更新图表数据-----------------------------------
     //更新图表数据
@@ -455,10 +483,13 @@ public class MainActivity extends AppCompatActivity
         }
         else
         {
-            // 没有数据时，添加空的日期标签
+            // 没有数据时，添加空的日期标签和零值数据点
             for (int i = 6; i >= 0; i--)
             {
                 dates.add(String.format("Day %d", i + 1));
+                entriesA.add(new Entry(6-i, 0f));
+                entriesB.add(new Entry(6-i, 0f));
+                entriesC.add(new Entry(6-i, 0f));
             }
         }
 
