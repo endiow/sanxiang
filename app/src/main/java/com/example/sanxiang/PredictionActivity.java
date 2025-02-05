@@ -8,7 +8,6 @@ import android.text.TextPaint;
 import android.text.method.LinkMovementMethod;
 import android.text.style.ClickableSpan;
 import android.view.View;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -23,7 +22,6 @@ import com.example.sanxiang.db.DatabaseHelper;
 import com.example.sanxiang.util.UnbalanceCalculator;
 import com.chaquo.python.PyObject;
 import com.chaquo.python.Python;
-import com.chaquo.python.android.AndroidPlatform;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,7 +29,6 @@ import java.util.List;
 import java.util.Map;
 
 import androidx.annotation.NonNull;
-import android.content.Intent;
 import org.json.JSONObject;
 
 public class PredictionActivity extends AppCompatActivity
