@@ -104,11 +104,23 @@ public class PredictionActivity extends AppCompatActivity
             {
                 try
                 {
-                    List<UserData> historicalData = dbHelper.getUserLastNDaysData(userId, 20);
-                    //至少有7天数据，才进行预测
-                    if (historicalData != null && historicalData.size() >= 7)
+                    // 首先获取最近14天的数据来判断是否有足够数据进行预测
+                    List<UserData> recentData = dbHelper.getUserLastNDaysData(userId, 14);
+                    if (recentData != null && !recentData.isEmpty())
                     {
-                        PredictionResult prediction = predictUserPower(historicalData);
+                        PredictionResult prediction;
+                        if (recentData.size() < 14)
+                        {
+                            // 数据少于14天时使用简单平均预测
+                            prediction = predictUserPowerWithAverage(recentData);
+                        }
+                        else
+                        {
+                            // 数据大于等于14天时，获取30天数据使用statsmodels预测
+                            List<UserData> historicalData = dbHelper.getUserLastNDaysData(userId, 30);
+                            prediction = predictUserPowerWithStatsmodels(historicalData);
+                        }
+                        
                         if (prediction != null)
                         {
                             predictions.add(prediction);
@@ -121,13 +133,6 @@ public class PredictionActivity extends AppCompatActivity
                     // 单个用户预测失败，继续处理下一个用户
                     continue;
                 }
-            }
-
-            // 如果没有任何用户有足够的数据进行预测
-            if (predictions.isEmpty())
-            {
-                Toast.makeText(this, "没有任何用户具有足够的历史数据进行预测", Toast.LENGTH_LONG).show();
-                return;
             }
 
             // 计算总预测电量和不平衡度
@@ -191,8 +196,39 @@ public class PredictionActivity extends AppCompatActivity
         }
     }
 
-    //预测电量函数
-    private PredictionResult predictUserPower(List<UserData> historicalData)
+    //使用简单平均进行预测
+    private PredictionResult predictUserPowerWithAverage(List<UserData> historicalData)
+    {
+        PredictionResult result = new PredictionResult();
+        UserData latestData = historicalData.get(0);  // 使用最新的用户数据
+        
+        // 设置用户基本信息
+        result.setUserId(latestData.getUserId());
+        result.setUserName(latestData.getUserName());
+        result.setRouteNumber(latestData.getRouteNumber());
+        result.setRouteName(latestData.getRouteName());
+        result.setPhase(latestData.getPhase());
+        
+        // 计算简单平均
+        double sumA = 0, sumB = 0, sumC = 0;
+        int count = historicalData.size();
+        
+        for (UserData data : historicalData)
+        {
+            sumA += data.getPhaseAPower();
+            sumB += data.getPhaseBPower();
+            sumC += data.getPhaseCPower();
+        }
+        
+        result.setPredictedPhaseAPower(sumA / count);
+        result.setPredictedPhaseBPower(sumB / count);
+        result.setPredictedPhaseCPower(sumC / count);
+        
+        return result;
+    }
+
+    //使用statsmodels进行预测
+    private PredictionResult predictUserPowerWithStatsmodels(List<UserData> historicalData)
     {
         PredictionResult result = new PredictionResult();
         UserData latestData = historicalData.get(0);  // 使用最新的用户数据
@@ -263,21 +299,8 @@ public class PredictionActivity extends AppCompatActivity
         catch (Exception e) 
         {
             e.printStackTrace();
-            // 发生异常时使用简单平均
-            double sumA = 0, sumB = 0, sumC = 0;
-            int count = Math.min(7, historicalData.size());
-            
-            for (int i = 0; i < count; i++) 
-            {
-                UserData data = historicalData.get(i);
-                sumA += data.getPhaseAPower();
-                sumB += data.getPhaseBPower();
-                sumC += data.getPhaseCPower();
-            }
-            
-            result.setPredictedPhaseAPower(sumA / count);
-            result.setPredictedPhaseBPower(sumB / count);
-            result.setPredictedPhaseCPower(sumC / count);
+            // 如果statsmodels预测失败，回退到简单平均
+            return predictUserPowerWithAverage(historicalData);
         }
         
         return result;

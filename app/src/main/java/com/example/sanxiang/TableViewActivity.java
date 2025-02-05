@@ -12,6 +12,7 @@ import androidx.annotation.NonNull;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.widget.EditText;
+import android.content.Intent;
 
 import com.example.sanxiang.db.DatabaseHelper;
 import java.util.ArrayList;
@@ -42,10 +43,10 @@ public class TableViewActivity extends AppCompatActivity
         etSearch = findViewById(R.id.etSearch);
 
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        adapter = new TableAdapter(new ArrayList<>());
+        int tableType = getIntent().getIntExtra(EXTRA_TABLE_TYPE, TYPE_USER_INFO);
+        adapter = new TableAdapter(new ArrayList<>(), tableType);
         recyclerView.setAdapter(adapter);
 
-        int tableType = getIntent().getIntExtra(EXTRA_TABLE_TYPE, TYPE_USER_INFO);
         if (tableType == TYPE_USER_INFO)
         {
             displayUserInfo();
@@ -177,10 +178,12 @@ public class TableViewActivity extends AppCompatActivity
     private static class TableAdapter extends RecyclerView.Adapter<TableAdapter.ViewHolder>
     {
         private List<String> rows;
+        private int tableType;
 
-        public TableAdapter(List<String> rows)
+        public TableAdapter(List<String> rows, int tableType)
         {
             this.rows = rows;
+            this.tableType = tableType;
         }
 
         public void updateData(List<String> newRows)
@@ -202,6 +205,39 @@ public class TableViewActivity extends AppCompatActivity
         public void onBindViewHolder(@NonNull ViewHolder holder, int position)
         {
             holder.tvRowContent.setText(rows.get(position));
+            
+            if (tableType == TYPE_USER_INFO)
+            {
+                holder.itemView.setOnClickListener(v -> 
+                {
+                    String content = rows.get(position);
+                    String userId = extractUserId(content);
+                    if (userId != null)
+                    {
+                        Intent intent = new Intent(v.getContext(), UserDetailActivity.class);
+                        intent.putExtra("userId", userId);
+                        v.getContext().startActivity(intent);
+                    }
+                });
+            }
+            else
+            {
+                holder.itemView.setClickable(false);
+            }
+        }
+
+        private String extractUserId(String content)
+        {
+            try
+            {
+                int start = content.indexOf("用户编号：") + 5;
+                int end = content.indexOf("\n", start);
+                return content.substring(start, end).trim();
+            }
+            catch (Exception e)
+            {
+                return null;
+            }
         }
 
         @Override

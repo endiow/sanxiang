@@ -514,6 +514,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
                 String userDataTable = "user_data_" + userId;
                 String dataQuery = "SELECT " + 
                     COLUMN_DATE + ", " +
+                    COLUMN_PHASE + ", " +
                     COLUMN_PHASE_A_POWER + ", " +
                     COLUMN_PHASE_B_POWER + ", " +
                     COLUMN_PHASE_C_POWER +
@@ -526,6 +527,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
                 if (dataCursor != null)
                 {
                     int dateIndex = dataCursor.getColumnIndex(COLUMN_DATE);
+                    int phaseIndex = dataCursor.getColumnIndex(COLUMN_PHASE);
                     int phaseAPowerIndex = dataCursor.getColumnIndex(COLUMN_PHASE_A_POWER);
                     int phaseBPowerIndex = dataCursor.getColumnIndex(COLUMN_PHASE_B_POWER);
                     int phaseCPowerIndex = dataCursor.getColumnIndex(COLUMN_PHASE_C_POWER);
@@ -541,7 +543,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
                             userData.setUserName(userName);
                             userData.setRouteNumber(routeNumber);
                             userData.setRouteName(routeName);
-                            userData.setPhase(phase);
+                            userData.setPhase(phaseIndex >= 0 ? dataCursor.getString(phaseIndex) : "");
                             userData.setDate(dataCursor.getString(dateIndex));
                             userData.setPhaseAPower(dataCursor.getDouble(phaseAPowerIndex));
                             userData.setPhaseBPower(dataCursor.getDouble(phaseBPowerIndex));

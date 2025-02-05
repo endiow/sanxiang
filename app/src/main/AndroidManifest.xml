@@ -32,6 +32,7 @@
         <activity android:name=".PredictionActivity" />
         <activity android:name=".PredictionDetailActivity" />
         <activity android:name=".TableViewActivity" />
+        <activity android:name=".UserDetailActivity" />
     </application>
 
 </manifest>

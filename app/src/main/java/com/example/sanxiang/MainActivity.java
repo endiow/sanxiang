@@ -156,9 +156,9 @@ public class MainActivity extends AppCompatActivity
         // 配置图表
         lineChart.getDescription().setEnabled(false);
         lineChart.setTouchEnabled(true);
-        lineChart.setDragEnabled(true);
-        lineChart.setScaleEnabled(true);
-        lineChart.setPinchZoom(true);
+        lineChart.setDragEnabled(false);   // 禁止拖动
+        lineChart.setScaleEnabled(false);  // 禁止缩放
+        lineChart.setPinchZoom(false);     // 禁止双指缩放
         lineChart.setDrawGridBackground(false);
         
         // 调整边距
