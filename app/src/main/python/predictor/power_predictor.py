@@ -53,10 +53,10 @@ class PowerPredictor:
                     continue
             
             # 检查是否有足够的数据
-            if len(dates) < 14:  # 需要至少两个周期的数据
+            if len(dates) < 3:  # 降低最小数据要求到3天
                 return {
                     'success': False,
-                    'error': f'数据量不足，至少需要14天的数据，当前只有{len(dates)}天'
+                    'error': f'数据量不足，至少需要3天的数据，当前只有{len(dates)}天'
                 }
             
             # 创建DataFrame
@@ -82,42 +82,51 @@ class PowerPredictor:
             series_a = df['phase_a']
             series_b = df['phase_b']
             series_c = df['phase_c']
-            
-            # 设置预测模型参数
-            model_params = {
-                'seasonal': 'add',
-                'seasonal_periods': 7,  # 周期性为7天
-                'trend': 'add',
-                'initialization_method': 'estimated'  # 使用估计方法初始化
-            }
-            
+
             def predict_series(series):
                 # 如果数据全为0，返回0
                 if np.all(series == 0):
                     return 0.0, {'lower': 0.0, 'upper': 0.0}
                 
-                # 尝试使用指数平滑模型
-                try:
-                    model = ExponentialSmoothing(series, **model_params).fit()
-                    pred = model.forecast(1)[0]
-                    resid = model.resid
-                    std_err = np.std(resid)
-                    z_value = 1.96  # 95% 置信区间
-                    margin = z_value * std_err
-                    interval = {
-                        'lower': float(max(0, pred - margin)),
-                        'upper': float(pred + margin)
+                # 根据数据量选择不同的预测方法
+                if len(series) >= 7:
+                    # 使用Holt-Winters方法（有足够数据支持季节性）
+                    model_params = {
+                        'seasonal': 'add',
+                        'seasonal_periods': 7,  # 周期性为7天
+                        'trend': 'add',
+                        'initialization_method': 'estimated',
+                        'damped_trend': True  # 使用阻尼趋势
                     }
-                    return float(pred), interval
-                except:
-                    # 如果模型失败，使用简单移动平均
-                    last_week = series[-7:].mean()
-                    std_dev = series[-7:].std()
-                    return float(last_week), {
-                        'lower': float(max(0, last_week - std_dev)),
-                        'upper': float(last_week + std_dev)
-                    }
-            
+                    try:
+                        model = ExponentialSmoothing(series, **model_params).fit(
+                            optimized=True,
+                            use_boxcox=True,  # 使用Box-Cox转换
+                            remove_bias=True   # 移除偏差
+                        )
+                        pred = model.forecast(1)[0]
+                    except:
+                        # 如果Holt-Winters失败，使用简单指数平滑
+                        model = ExponentialSmoothing(series, trend=None, seasonal=None).fit()
+                        pred = model.forecast(1)[0]
+                else:
+                    # 数据量不足时使用加权移动平均
+                    weights = np.exp(np.linspace(-1, 0, len(series)))
+                    pred = np.average(series, weights=weights)
+
+                # 计算预测区间
+                std_err = np.std(series) if len(series) > 1 else 0
+                margin = 1.96 * std_err  # 95% 置信区间
+                
+                # 确保预测值和区间都是非负的
+                pred = max(0, pred)
+                interval = {
+                    'lower': float(max(0, pred - margin)),
+                    'upper': float(pred + margin)
+                }
+                
+                return float(pred), interval
+
             # 预测三相电量
             pred_a, interval_a = predict_series(series_a)
             pred_b, interval_b = predict_series(series_b)
@@ -143,7 +152,8 @@ class PowerPredictor:
                 'model_info': {
                     'data_points': len(series_a),
                     'last_date': df.index[-1].strftime('%Y-%m-%d'),
-                    'confidence_level': 0.95
+                    'confidence_level': 0.95,
+                    'method': 'Holt-Winters' if len(series_a) >= 7 else 'Weighted Moving Average'
                 }
             }
         except Exception as e:

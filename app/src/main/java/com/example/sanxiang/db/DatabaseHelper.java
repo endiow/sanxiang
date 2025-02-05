@@ -5,13 +5,14 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import com.example.sanxiang.data.UserData;
+import com.example.sanxiang.util.UnbalanceCalculator;
 import android.content.ContentValues;
-
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Collections;
 import java.util.Map;
+import java.util.HashMap;
 
 public class DatabaseHelper extends SQLiteOpenHelper
 {
@@ -19,6 +20,8 @@ public class DatabaseHelper extends SQLiteOpenHelper
     private static final int DATABASE_VERSION = 1;
     private static final String TABLE_USER_INFO = "user_info";  // 用户信息表
     private static final String TABLE_TOTAL_POWER = "total_power";  // 总电量表
+    private static final String TABLE_PREDICTION = "prediction";  // 预测结果表
+    private static final String TABLE_LAST_MODIFIED = "last_modified";  // 最后修改时间表
     private final Context context;
 
     // 列名常量
@@ -35,6 +38,11 @@ public class DatabaseHelper extends SQLiteOpenHelper
     private static final String COLUMN_TOTAL_PHASE_B = "total_phase_b";
     private static final String COLUMN_TOTAL_PHASE_C = "total_phase_c";
     private static final String COLUMN_UNBALANCE_RATE = "unbalance_rate";
+    private static final String COLUMN_PREDICT_TIME = "predict_time";  // 预测时间
+    private static final String COLUMN_PREDICTED_PHASE_A = "predicted_phase_a";  // 预测的A相电量
+    private static final String COLUMN_PREDICTED_PHASE_B = "predicted_phase_b";  // 预测的B相电量
+    private static final String COLUMN_PREDICTED_PHASE_C = "predicted_phase_c";  // 预测的C相电量
+    private static final String COLUMN_MODIFIED_TIME = "modified_time";  // 修改时间
 
     // 创建用户信息表的SQL语句
     private static final String CREATE_USER_INFO_TABLE = "CREATE TABLE " + TABLE_USER_INFO + " (" +
@@ -61,6 +69,21 @@ public class DatabaseHelper extends SQLiteOpenHelper
             COLUMN_TOTAL_PHASE_C + " REAL, " +
             COLUMN_UNBALANCE_RATE + " REAL)";
 
+    // 创建预测结果表的SQL语句
+    private static final String CREATE_PREDICTION_TABLE = 
+            "CREATE TABLE " + TABLE_PREDICTION + " (" +
+            COLUMN_USER_ID + " TEXT, " +    // 用户编号
+            COLUMN_PREDICT_TIME + " TEXT, " +    // 预测时间
+            COLUMN_PHASE + " TEXT, " +    // 相位
+            COLUMN_PREDICTED_PHASE_A + " REAL, " +
+            COLUMN_PREDICTED_PHASE_B + " REAL, " +
+            COLUMN_PREDICTED_PHASE_C + " REAL, " +
+            "PRIMARY KEY (" + COLUMN_USER_ID + ", " + COLUMN_PREDICT_TIME + "))";
+
+    // 创建最后修改时间表的SQL语句
+    private static final String CREATE_LAST_MODIFIED_TABLE = 
+            "CREATE TABLE " + TABLE_LAST_MODIFIED + " (" + COLUMN_MODIFIED_TIME + " TEXT)";
+
     public DatabaseHelper(Context context)
     {
         super(context, DATABASE_NAME, null, DATABASE_VERSION);
@@ -70,10 +93,22 @@ public class DatabaseHelper extends SQLiteOpenHelper
     @Override
     public void onCreate(SQLiteDatabase db)
     {
-        // 创建用户信息表
-        db.execSQL(CREATE_USER_INFO_TABLE);
-        // 创建总电量表
-        db.execSQL(CREATE_TOTAL_POWER_TABLE);
+        try
+        {
+            db.execSQL(CREATE_USER_INFO_TABLE);
+            db.execSQL(CREATE_TOTAL_POWER_TABLE);
+            db.execSQL(CREATE_PREDICTION_TABLE);
+            db.execSQL(CREATE_LAST_MODIFIED_TABLE);
+            
+            // 初始化最后修改时间
+            ContentValues values = new ContentValues();
+            values.put(COLUMN_MODIFIED_TIME, getCurrentTime());
+            db.insert(TABLE_LAST_MODIFIED, null, values);
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -82,8 +117,141 @@ public class DatabaseHelper extends SQLiteOpenHelper
         // 空实现
     }
 
+    //-----------------------------------修改时间表函数-----------------------------------
+    // 获取当前时间的辅助方法
+    private String getCurrentTime()
+    {
+        return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date());
+    }
+
+    // 更新最后修改时间
+    private void updateLastModifiedTime(SQLiteDatabase db)
+    {
+        try
+        {
+            db.delete(TABLE_LAST_MODIFIED, null, null);
+            ContentValues values = new ContentValues();
+            values.put(COLUMN_MODIFIED_TIME, getCurrentTime());
+            db.insert(TABLE_LAST_MODIFIED, null, values);
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    // 获取最后修改时间
+    public String getLastModifiedTime()
+    {
+        try
+        {
+            SQLiteDatabase db = this.getReadableDatabase();
+            Cursor cursor = db.query(TABLE_LAST_MODIFIED, new String[]{COLUMN_MODIFIED_TIME}, null, null, null, null, null);
+                
+            if (cursor != null && cursor.moveToFirst())
+            {
+                String time = cursor.getString(0);
+                cursor.close();
+                return time;
+            }
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    //-----------------------------------预测表函数-----------------------------------
+    // 保存预测结果
+    public void savePredictionResult(String userId, String phase, double phaseA, double phaseB, double phaseC)
+    {
+        try
+        {
+            SQLiteDatabase db = this.getWritableDatabase();
+            
+            // 获取当前时间作为预测时间
+            String predictTime = getCurrentTime();
+            
+            // 删除该用户之前的预测结果
+            db.delete(TABLE_PREDICTION, COLUMN_USER_ID + "=?", new String[]{userId});
+            
+            // 插入新的预测结果
+            ContentValues values = new ContentValues();
+            values.put(COLUMN_USER_ID, userId);
+            values.put(COLUMN_PREDICT_TIME, predictTime);
+            values.put(COLUMN_PHASE, phase);
+            values.put(COLUMN_PREDICTED_PHASE_A, phaseA);
+            values.put(COLUMN_PREDICTED_PHASE_B, phaseB);
+            values.put(COLUMN_PREDICTED_PHASE_C, phaseC);
+
+            db.insert(TABLE_PREDICTION, null, values);
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    // 获取用户的预测结果
+    public Map<String, Object> getUserPrediction(String userId)
+    {
+        Map<String, Object> result = new HashMap<>();
+        try
+        {
+            SQLiteDatabase db = this.getReadableDatabase();
+            Cursor cursor = db.query(TABLE_PREDICTION,
+                new String[]{COLUMN_PHASE, COLUMN_PREDICTED_PHASE_A, COLUMN_PREDICTED_PHASE_B, COLUMN_PREDICTED_PHASE_C},
+                COLUMN_USER_ID + "=?",
+                new String[]{userId},
+                null, null, COLUMN_PREDICT_TIME + " DESC LIMIT 1");
+                
+            if (cursor != null && cursor.moveToFirst())
+            {
+                result.put("phase", cursor.getString(0));
+                result.put("phase_a", cursor.getDouble(1));
+                result.put("phase_b", cursor.getDouble(2));
+                result.put("phase_c", cursor.getDouble(3));
+                cursor.close();
+            }
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+        return result;
+    }
+
+    // 获取预测时间
+    public String getPredictionTime(String userId)
+    {
+        try
+        {
+            SQLiteDatabase db = this.getReadableDatabase();
+            Cursor cursor = db.query(TABLE_PREDICTION,
+                new String[]{COLUMN_PREDICT_TIME},
+                COLUMN_USER_ID + "=?",
+                new String[]{userId},
+                null, null, COLUMN_PREDICT_TIME + " DESC LIMIT 1");
+                
+            if (cursor != null && cursor.moveToFirst())
+            {
+                String time = cursor.getString(0);
+                cursor.close();
+                return time;
+            }
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    //-----------------------------------导入数据函数-----------------------------------
     // 批量导入数据
     public void importBatchData(Map<String, Map<String, List<UserData>>> dateUserGroupedData)
+
     {
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
@@ -102,6 +270,9 @@ public class DatabaseHelper extends SQLiteOpenHelper
                 // 更新总电量
                 updateDailyTotalPower(db, date, userGroupedData);
             }
+            
+            // 更新最后修改时间
+            updateLastModifiedTime(db);
             
             db.setTransactionSuccessful();
         }
@@ -207,7 +378,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
         }
         
         // 计算不平衡度
-        double unbalanceRate = calculateUnbalanceRate(totalA, totalB, totalC);
+        double unbalanceRate = UnbalanceCalculator.calculateUnbalanceRate(totalA, totalB, totalC);
 
         // 插入新的总电量数据
         ContentValues totalValues = new ContentValues();
@@ -239,6 +410,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
         cursor.close();
     }
 
+    //-----------------------------------清空数据函数-----------------------------------
     // 清空所有数据
     public void clearAllData()
     {
@@ -263,6 +435,12 @@ public class DatabaseHelper extends SQLiteOpenHelper
             // 删除总电量表中的所有数据
             db.delete(TABLE_TOTAL_POWER, null, null);
             
+            // 删除预测结果表中的所有数据
+            db.delete(TABLE_PREDICTION, null, null);
+            
+            // 更新最后修改时间
+            updateLastModifiedTime(db);
+            
             db.setTransactionSuccessful();
         }
         finally
@@ -273,63 +451,10 @@ public class DatabaseHelper extends SQLiteOpenHelper
 
     //-----------------------------------辅助函数-----------------------------------
 
-    // 计算三相不平衡度
-    private double calculateUnbalanceRate(double phaseA, double phaseB, double phaseC)
-    {
-        double avg = (phaseA + phaseB + phaseC) / 3.0;
-        if (avg == 0) return 0;
-
-        double maxDiff = Math.max(Math.abs(phaseA - avg), Math.max(Math.abs(phaseB - avg), Math.abs(phaseC - avg)));
-        return (maxDiff / avg) * 100;
-    }
-
-    // 获取所有用户ID
-    public List<String> getAllUserIds()
-    {
-        List<String> userIds = new ArrayList<>();
-        SQLiteDatabase db = null;
-        Cursor cursor = null;
-        
-        try
-        {
-            db = getReadableDatabase();
-            String query = "SELECT " + COLUMN_USER_ID + " FROM " + TABLE_USER_INFO;
-            cursor = db.rawQuery(query, null);
-            
-            if (cursor != null && cursor.moveToFirst())
-            {
-                int userIdIndex = cursor.getColumnIndex(COLUMN_USER_ID);
-                if (userIdIndex >= 0)
-                {
-                    do
-                    {
-                        String userId = cursor.getString(userIdIndex);
-                        if (userId != null && !userId.isEmpty())
-                        {
-                            userIds.add(userId);
-                        }
-                    }
-                    while (cursor.moveToNext());
-                }
-            }
-        }
-        catch (Exception e)
-        {
-            e.printStackTrace();
-        }
-        finally
-        {
-            if (cursor != null)
-            {
-                cursor.close();
-            }
-        }
-        
-        return userIds;
-    }
-    
+    //-----------------------------------日期相关函数-----------------------------------
     // 获取最近n天的日期列表
     public List<String> getLastNDays(int n)
+
     {
         List<String> dates = new ArrayList<>();
         SQLiteDatabase db = null;
@@ -492,42 +617,6 @@ public class DatabaseHelper extends SQLiteOpenHelper
         return totalPower;
     }
 
-    // 获取指定用户信息的格式化字符串
-    public String getUserInfo(String userId)
-    {
-        SQLiteDatabase db = getReadableDatabase();
-        String query = "SELECT * FROM " + TABLE_USER_INFO + " WHERE " + COLUMN_USER_ID + " = ?";
-        Cursor cursor = db.rawQuery(query, new String[]{userId});
-        
-        if (cursor != null && cursor.moveToFirst())
-        {
-            int userNameIndex = cursor.getColumnIndex(COLUMN_USER_NAME);
-            int routeNumberIndex = cursor.getColumnIndex(COLUMN_ROUTE_NUMBER);
-            int routeNameIndex = cursor.getColumnIndex(COLUMN_ROUTE_NAME);
-            
-            if (userNameIndex >= 0 && routeNumberIndex >= 0 && routeNameIndex >= 0)
-            {
-                String userName = cursor.getString(userNameIndex);
-                String routeNumber = cursor.getString(routeNumberIndex);
-                String routeName = cursor.getString(routeNameIndex);
-                
-                cursor.close();
-                return String.format(
-                    "用户编号：%s\n" +
-                    "用户名称：%s\n" +
-                    "回路编号：%s\n" +
-                    "线路名称：%s",
-                    userId, userName, routeNumber, routeName
-                );
-            }
-        }
-        if (cursor != null)
-        {
-            cursor.close();
-        }
-        return null;
-    }
-
     // 获取指定日期的用户数据
     public List<UserData> getUserDataByDate(String date)
     {
@@ -641,6 +730,88 @@ public class DatabaseHelper extends SQLiteOpenHelper
         }
         
         return dataList;
+    }
+
+    //-----------------------------------用户相关函数-----------------------------------
+    // 获取所有用户ID
+    public List<String> getAllUserIds()
+    {
+        List<String> userIds = new ArrayList<>();
+        SQLiteDatabase db = null;
+        Cursor cursor = null;
+        
+        try
+        {
+            db = getReadableDatabase();
+            String query = "SELECT " + COLUMN_USER_ID + " FROM " + TABLE_USER_INFO;
+            cursor = db.rawQuery(query, null);
+            
+            if (cursor != null && cursor.moveToFirst())
+            {
+                int userIdIndex = cursor.getColumnIndex(COLUMN_USER_ID);
+                if (userIdIndex >= 0)
+                {
+                    do
+                    {
+                        String userId = cursor.getString(userIdIndex);
+                        if (userId != null && !userId.isEmpty())
+                        {
+                            userIds.add(userId);
+                        }
+                    }
+                    while (cursor.moveToNext());
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+        finally
+        {
+            if (cursor != null)
+            {
+                cursor.close();
+            }
+        }
+        
+        return userIds;
+    }
+
+    // 获取指定用户信息的格式化字符串
+    public String getUserInfo(String userId)
+    {
+        SQLiteDatabase db = getReadableDatabase();
+        String query = "SELECT * FROM " + TABLE_USER_INFO + " WHERE " + COLUMN_USER_ID + " = ?";
+        Cursor cursor = db.rawQuery(query, new String[]{userId});
+        
+        if (cursor != null && cursor.moveToFirst())
+        {
+            int userNameIndex = cursor.getColumnIndex(COLUMN_USER_NAME);
+            int routeNumberIndex = cursor.getColumnIndex(COLUMN_ROUTE_NUMBER);
+            int routeNameIndex = cursor.getColumnIndex(COLUMN_ROUTE_NAME);
+            
+            if (userNameIndex >= 0 && routeNumberIndex >= 0 && routeNameIndex >= 0)
+            {
+                String userName = cursor.getString(userNameIndex);
+                String routeNumber = cursor.getString(routeNumberIndex);
+                String routeName = cursor.getString(routeNameIndex);
+                
+                cursor.close();
+                return String.format(
+                    "用户编号：%s\n" +
+                    "用户名称：%s\n" +
+                    "回路编号：%s\n" +
+                    "线路名称：%s",
+                    userId, userName, routeNumber, routeName
+                );
+            }
+        }
+        if (cursor != null)
+        {
+            cursor.close();
+        }
+        return null;
     }
 
     // 获取指定用户最近n天的用电量数据

@@ -284,9 +284,11 @@ public class UserDetailActivity extends AppCompatActivity
                 if (data.getUserId().equals(userId))
                 {
                     String powerInfo = String.format(
+                        "相位：%s\n" +
                         "A相电量：%.2f\n" +
                         "B相电量：%.2f\n" +
                         "C相电量：%.2f",
+                        data.getPhase(),
                         data.getPhaseAPower(),
                         data.getPhaseBPower(),
                         data.getPhaseCPower()
@@ -296,10 +298,12 @@ public class UserDetailActivity extends AppCompatActivity
                 }
             }
             tvCurrentPower.setText(String.format(
+                "相位：无数据\n" +
                 "A相电量：%.2f\n" +
                 "B相电量：%.2f\n" +
                 "C相电量：%.2f",
                 0.0, 0.0, 0.0
+
             ));
         }
         catch (Exception e)

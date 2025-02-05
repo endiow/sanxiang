@@ -42,7 +42,7 @@
                 android:layout_weight="1"
                 android:gravity="center"
                 android:textSize="14sp"
-                android:hint="输入日期 (yyyy-MM-dd)"
+                android:hint="输入日期"
                 android:inputType="date"
                 android:maxLines="1"
                 android:singleLine="true"

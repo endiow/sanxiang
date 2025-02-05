@@ -45,26 +45,48 @@ import java.util.HashMap;
 public class MainActivity extends AppCompatActivity
 {
     private static final int PERMISSION_REQUEST_CODE = 1;
-    private DatabaseHelper dbHelper;
-    private LineChart lineChart;
-    private ActivityResultLauncher<Intent> filePickerLauncher;
-    private Button btnImportData;
-    private Button btnViewData;
-    private Button btnPredict;
-    private Button btnAdjustPhase;
-    private Button btnClearData;
-    private TextView textView;
+    private DatabaseHelper dbHelper;    // 数据库帮助类
+    private LineChart lineChart;        // 图表视图
+    private ActivityResultLauncher<Intent> filePickerLauncher; // 文件选择器结果处理器
+    private Button btnImportData;        // 导入数据按钮
+    private Button btnViewData;         // 查看数据按钮
+    private Button btnPredict;          // 预测按钮
+    private Button btnAdjustPhase;      // 相位调整按钮
+    private Button btnClearData;        // 清空数据按钮
+    private TextView textView;          // 文本视图
 
     // 初始化界面、设置布局和基本配置
     @Override
     protected void onCreate(Bundle savedInstanceState)
     {
-        // 调用父类的onCreate方法
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        try
+        {
+            // 初始化Python环境
+            if (!Python.isStarted())
+            {
+                Python.start(new AndroidPlatform(this));
+            }
+
+            dbHelper = new DatabaseHelper(this);
+            lineChart = findViewById(R.id.lineChart);
+            setupChart();
+            setupButtons();
+            updateChartData();
+            
+            // 测试Python环境
+            //testPythonEnvironment();
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+            Toast.makeText(this, "初始化界面时出错：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+
         // 启用边缘到边缘的显示效果
         EdgeToEdge.enable(this);
-        // 设置Activity的布局
-        setContentView(R.layout.activity_main);
         // 设置系统栏（状态栏和导航栏）的内边距
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) ->
         {
@@ -73,15 +95,6 @@ public class MainActivity extends AppCompatActivity
             return insets;
         });
 
-
-        // 初始化数据库帮助类
-        dbHelper = new DatabaseHelper(this);
-        // 获取图表视图引用
-        lineChart = findViewById(R.id.lineChart);
-        // 设置图表的基本配置
-        setupChart();
-        // 设置所有按钮的点击事件监听器
-        setupButtons();
         // 初始化文件选择器结果处理器
         filePickerLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -116,9 +129,6 @@ public class MainActivity extends AppCompatActivity
                     }
                 }
             });
-
-        // 测试 Python 环境
-        //testPythonEnvironment();
     }
 
     @Override
@@ -134,12 +144,6 @@ public class MainActivity extends AppCompatActivity
     {
         try 
         {
-            // 初始化 Python
-            if (!Python.isStarted()) 
-            {
-                Python.start(new AndroidPlatform(this));
-            }
-            
             // 启动测试结果界面
             Intent intent = new Intent(this, TestResultActivity.class);
             startActivity(intent);
@@ -185,9 +189,6 @@ public class MainActivity extends AppCompatActivity
         // 配置图例
         lineChart.getLegend().setTextSize(12f);
         lineChart.getLegend().setFormSize(12f);
-
-        // 更新数据
-        updateChartData();
     }
 
     //初始化按钮

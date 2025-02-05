@@ -32,11 +32,13 @@ import java.util.Map;
 
 import androidx.annotation.NonNull;
 import android.content.Intent;
+import org.json.JSONObject;
 
 public class PredictionActivity extends AppCompatActivity
 {
-    private DatabaseHelper dbHelper;
+    private DatabaseHelper dbHelper;    
     private TextView tvTotalPrediction;
+    private TextView tvWarning;  // 添加警告信息显示
     private RecyclerView recyclerView;
     private PredictionAdapter adapter;
     
@@ -51,14 +53,42 @@ public class PredictionActivity extends AppCompatActivity
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_prediction);
 
-        // 初始化Python环境
-        if (!Python.isStarted())
+        try
         {
-            Python.start(new AndroidPlatform(this));
-        }
+            // 初始化数据库和视图
+            dbHelper = new DatabaseHelper(this);
+            
+            // 初始化视图和适配器
+            initViews();
+            
+            // 初始化显示
+            tvTotalPrediction.setText("暂无数据");
+            adapter.setPredictions(new ArrayList<>());
 
-        dbHelper = new DatabaseHelper(this);
+            // 加载预测数据
+            loadPredictions();
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+            Toast.makeText(this, "初始化界面时出错：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+            // 显示错误信息
+            if (tvTotalPrediction != null)
+            {
+                tvTotalPrediction.setText("暂无数据");
+            }
+            if (adapter != null)
+            {
+                adapter.setPredictions(new ArrayList<>());
+            }
+        }
+    }
+
+    // 初始化视图组件
+    private void initViews()
+    {
         tvTotalPrediction = findViewById(R.id.tvTotalPrediction);
+        tvWarning = findViewById(R.id.tvWarning);
         recyclerView = findViewById(R.id.recyclerView);
 
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
@@ -94,141 +124,241 @@ public class PredictionActivity extends AppCompatActivity
                 }
             }
         });
-
-        loadPredictions();
-    }
-
-    private void predictUserPower(String userId)
-    {
-        // 获取最近30天的历史数据用于预测
-        List<UserData> historicalData = dbHelper.getUserLastNDaysData(userId, 30);
-        
-        if (historicalData.isEmpty())
-        {
-            Toast.makeText(this, "没有找到该用户的历史数据", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        // 使用Holt-Winters进行预测
-        PredictionResult result = predictUserPowerWithHoltWinters(historicalData);
-        
-        // 显示预测结果
-        if (result != null)
-        {
-            Intent intent = new Intent(this, PredictionDetailActivity.class);
-            intent.putExtra("userId", result.getUserId());
-            intent.putExtra("userName", result.getUserName());
-            intent.putExtra("routeNumber", result.getRouteNumber());
-            intent.putExtra("routeName", result.getRouteName());
-            intent.putExtra("phase", result.getPhase());
-            intent.putExtra("predictedPhaseAPower", result.getPredictedPhaseAPower());
-            intent.putExtra("predictedPhaseBPower", result.getPredictedPhaseBPower());
-            intent.putExtra("predictedPhaseCPower", result.getPredictedPhaseCPower());
-            startActivity(intent);
-        }
     }
 
     private void loadPredictions()
     {
         try
         {
-            List<String> userIds = dbHelper.getAllUserIds();
-            if (userIds.isEmpty())
-            {
-                Toast.makeText(this, "没有找到任何用户数据", Toast.LENGTH_LONG).show();
-                return;
-            }
-
-            List<PredictionResult> predictions = new ArrayList<>();
-            
-            //对每个用户进行预测
-            for (String userId : userIds)
-            {
-                try
-                {
-                    // 获取最近30天的历史数据用于预测
-                    List<UserData> historicalData = dbHelper.getUserLastNDaysData(userId, 30);
-                    if (historicalData != null && !historicalData.isEmpty())
-                    {
-                        PredictionResult prediction = predictUserPowerWithHoltWinters(historicalData);
-                        if (prediction != null)
-                        {
-                            predictions.add(prediction);
-                        }
-                    }
-                }
-                catch (Exception e)
-                {
-                    e.printStackTrace();
-                    // 单个用户预测失败，继续处理下一个用户
-                    continue;
-                }
-            }
-
-            if (predictions.isEmpty())
-            {
-                Toast.makeText(this, "没有可用的预测结果", Toast.LENGTH_LONG).show();
-                return;
-            }
-
-            // 计算总预测电量和不平衡度
+            // 重置总电量
             totalPhaseA = 0;
             totalPhaseB = 0;
             totalPhaseC = 0;
-            for (PredictionResult prediction : predictions)
+
+            // 获取所有用户ID
+            List<String> userIds = dbHelper.getAllUserIds();
+            List<PredictionResult> predictionResults = new ArrayList<>();
+            List<String> insufficientDataUsers = new ArrayList<>();  // 存储数据不足的用户
+
+            // 获取最后修改时间
+            String lastModifiedTime = dbHelper.getLastModifiedTime();
+            
+            for (String userId : userIds)
             {
-                totalPhaseA += prediction.getPredictedPhaseAPower();
-                totalPhaseB += prediction.getPredictedPhaseBPower();
-                totalPhaseC += prediction.getPredictedPhaseCPower();
+                // 获取用户的预测时间
+                String predictionTime = dbHelper.getPredictionTime(userId);
+                
+                // 如果预测结果不存在或者数据有更新，需要重新预测
+                if (predictionTime == null || lastModifiedTime == null || predictionTime.compareTo(lastModifiedTime) < 0)
+                {
+                    // 获取历史数据并预测
+                    List<UserData> historicalData = dbHelper.getUserLastNDaysData(userId, 30);
+                    if (historicalData.size() < 3)  
+                    {
+                        // 如果数据量不足3天，创建一个带有提示的预测结果
+                        PredictionResult result = new PredictionResult();
+                        UserData latestData = historicalData.isEmpty() ? null : historicalData.get(0);
+                        
+                        if (latestData != null)
+                        {
+                            result.setUserId(latestData.getUserId());
+                            result.setUserName(latestData.getUserName());
+                            result.setRouteNumber(latestData.getRouteNumber());
+                            result.setRouteName(latestData.getRouteName());
+                            result.setPhase(latestData.getPhase());
+                            result.setPredictedPhaseAPower(0.0);
+                            result.setPredictedPhaseBPower(0.0);
+                            result.setPredictedPhaseCPower(0.0);
+                            
+                            predictionResults.add(result);
+                            insufficientDataUsers.add(latestData.getUserId() + "(" + latestData.getUserName() + ")");
+                        }
+                        continue;
+                    }
+
+                    try
+                    {
+                        // 准备数据
+                        List<Map<String, Object>> pyData = new ArrayList<>();
+                        for (int i = historicalData.size() - 1; i >= 0; i--)
+                        {
+                            UserData data = historicalData.get(i);
+                            Map<String, Object> dayData = new HashMap<>();
+                            dayData.put("date", data.getDate());
+                            dayData.put("phase_a", data.getPhaseAPower());
+                            dayData.put("phase_b", data.getPhaseBPower());
+                            dayData.put("phase_c", data.getPhaseCPower());
+                            pyData.add(0, dayData);  // 添加到列表开头，确保按日期升序排序
+                        }
+
+                        // 调用Python预测
+                        Python py = Python.getInstance();
+                        PyObject predictorModule = py.getModule("predictor.power_predictor");
+                        PyObject predictorClass = predictorModule.get("PowerPredictor");
+                        PyObject predictor = predictorClass.call();
+                        PyObject pyResult = predictor.callAttr("predict", pyData);
+
+                        // 解析预测结果
+                        JSONObject jsonResult = new JSONObject(pyResult.toString());
+                        if (jsonResult.getBoolean("success"))
+                        {
+                            JSONObject predictionsObj = jsonResult.getJSONObject("predictions");
+                            
+                            // 创建预测结果对象
+                            PredictionResult result = new PredictionResult();
+                            UserData latestData = historicalData.get(0);  // 使用最新的用户数据
+                            
+                            // 设置用户基本信息
+                            result.setUserId(latestData.getUserId());
+                            result.setUserName(latestData.getUserName());
+                            result.setRouteNumber(latestData.getRouteNumber());
+                            result.setRouteName(latestData.getRouteName());
+                            result.setPhase(latestData.getPhase());
+                            
+                            // 设置预测值
+                            double predictedPhaseA = predictionsObj.getJSONObject("phase_a").getDouble("value");
+                            double predictedPhaseB = predictionsObj.getJSONObject("phase_b").getDouble("value");
+                            double predictedPhaseC = predictionsObj.getJSONObject("phase_c").getDouble("value");
+                            
+                            result.setPredictedPhaseAPower(predictedPhaseA);
+                            result.setPredictedPhaseBPower(predictedPhaseB);
+                            result.setPredictedPhaseCPower(predictedPhaseC);
+                            
+                            // 保存预测结果到数据库
+                            dbHelper.savePredictionResult(userId, latestData.getPhase(), predictedPhaseA, predictedPhaseB, predictedPhaseC);
+                            
+                            predictionResults.add(result);
+                            
+                            // 累加总电量
+                            totalPhaseA += predictedPhaseA;
+                            totalPhaseB += predictedPhaseB;
+                            totalPhaseC += predictedPhaseC;
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        e.printStackTrace();
+                    }
+                }
+                else
+                {
+                    // 从数据库获取预测结果
+                    Map<String, Object> prediction = dbHelper.getUserPrediction(userId);
+                    if (!prediction.isEmpty())
+                    {
+                        // 获取用户基本信息
+                        String userInfo = dbHelper.getUserInfo(userId);
+                        if (userInfo != null)
+                        {
+                            PredictionResult result = new PredictionResult();
+                            result.setUserId(userId);
+                            
+                            // 从用户信息字符串中提取信息
+                            String[] lines = userInfo.split("\n");
+                            for (String line : lines)
+                            {
+                                if (line.startsWith("用户名称："))
+                                {
+                                    result.setUserName(line.substring(5));
+                                }
+                                else if (line.startsWith("回路编号："))
+                                {
+                                    result.setRouteNumber(line.substring(5));
+                                }
+                                else if (line.startsWith("线路名称："))
+                                {
+                                    result.setRouteName(line.substring(5));
+                                }
+                            }
+                            
+                            // 设置相位和预测值
+                            result.setPhase((String)prediction.get("phase"));
+                            result.setPredictedPhaseAPower((Double)prediction.get("phase_a"));
+                            result.setPredictedPhaseBPower((Double)prediction.get("phase_b"));
+                            result.setPredictedPhaseCPower((Double)prediction.get("phase_c"));
+                            
+                            predictionResults.add(result);
+                            
+                            // 累加总电量
+                            totalPhaseA += (Double)prediction.get("phase_a");
+                            totalPhaseB += (Double)prediction.get("phase_b");
+                            totalPhaseC += (Double)prediction.get("phase_c");
+                        }
+                    }
+                }
             }
 
+            // 计算三相不平衡度
             double unbalanceRate = UnbalanceCalculator.calculateUnbalanceRate(totalPhaseA, totalPhaseB, totalPhaseC);
             String status = UnbalanceCalculator.getUnbalanceStatus(unbalanceRate);
 
+            // 更新UI
             String totalInfo = String.format(
-                "明日总电量预测：\n" +
-                "A相总量：%.2f\nB相总量：%.2f\nC相总量：%.2f\n" +
+                "预测总电量：\n" +
+                "A相：%.2f\n" +
+                "B相：%.2f\n" +
+                "C相：%.2f\n" +
                 "三相不平衡度：%.2f%% (%s)",
                 totalPhaseA, totalPhaseB, totalPhaseC, unbalanceRate, status
             );
-            
+
+            // 设置不平衡度可点击
             SpannableString spannableString = new SpannableString(totalInfo);
             int start = totalInfo.indexOf("三相不平衡度");
-            int end = start + 6;
-
-            // 设置文字样式和点击事件
-            ClickableSpan clickableSpan = new ClickableSpan() 
+            if (start >= 0)
             {
-                @Override
-                public void onClick(@NonNull View view) 
+                int end = start + 6;
+                ClickableSpan clickableSpan = new ClickableSpan()
                 {
-                    UnbalanceCalculator.showCalculationProcess(
-                        PredictionActivity.this,
-                        totalPhaseA, totalPhaseB, totalPhaseC
-                    );
-                }
+                    @Override
+                    public void onClick(@NonNull View view)
+                    {
+                        UnbalanceCalculator.showCalculationProcess(
+                            PredictionActivity.this,
+                            totalPhaseA, totalPhaseB, totalPhaseC
+                        );
+                    }
 
-                @Override
-                public void updateDrawState(@NonNull TextPaint ds) 
-                {
-                    ds.setColor(Color.rgb(51, 102, 153));  // 蓝色
-                    ds.setUnderlineText(false);
-                    ds.setFakeBoldText(true);  // 粗体
-                }
-            };
+                    @Override
+                    public void updateDrawState(@NonNull TextPaint ds)
+                    {
+                        ds.setColor(Color.rgb(51, 102, 153));
+                        ds.setUnderlineText(false);
+                        ds.setFakeBoldText(true);
+                    }
+                };
+                
+                spannableString.setSpan(clickableSpan, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                tvTotalPrediction.setText(spannableString);
+                tvTotalPrediction.setMovementMethod(LinkMovementMethod.getInstance());
+            }
+            else
+            {
+                tvTotalPrediction.setText(totalInfo);
+            }
 
-            spannableString.setSpan(clickableSpan, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            // 显示警告信息
+            if (!insufficientDataUsers.isEmpty())
+            {
+                String warningText = String.format(
+                    "以下用户的历史数据少于3天，无法进行预测（预测值显示为0）：\n%s", 
+                    String.join("、", insufficientDataUsers)
+                );
+                tvWarning.setText(warningText);
+                tvWarning.setVisibility(View.VISIBLE);
+            }
+            else
+            {
+                tvWarning.setVisibility(View.GONE);
+            }
 
-            tvTotalPrediction.setText(spannableString);
-            tvTotalPrediction.setMovementMethod(LinkMovementMethod.getInstance());
-
-            // 显示各用户预测结果
-            adapter.setPredictions(predictions);
+            // 更新列表
+            adapter.setPredictions(predictionResults);
         }
         catch (Exception e)
         {
             e.printStackTrace();
-            Toast.makeText(this, "预测过程中发生错误：" + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "加载预测数据时出错：" + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
