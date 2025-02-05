@@ -193,11 +193,17 @@ public class MainActivity extends AppCompatActivity
     //初始化按钮
     private void setupButtons()
     {
+        // 导入数据按钮
         btnImportData = findViewById(R.id.btnImportData);
+        // 查看数据按钮
         btnViewData = findViewById(R.id.btnViewData);
+        // 预测按钮
         btnPredict = findViewById(R.id.btnPredict);
+        // 相位调整按钮
         btnAdjustPhase = findViewById(R.id.btnAdjustPhase);
+        // 清空数据按钮
         btnClearData = findViewById(R.id.btnClearData);
+        // 文本视图
         textView = findViewById(R.id.textView);
 
         btnImportData.setOnClickListener(v -> checkPermissionAndOpenPicker());
@@ -457,87 +463,116 @@ public class MainActivity extends AppCompatActivity
     //更新图表数据
     private void updateChartData()
     {
-        // 准备三相数据
-        List<Entry> entriesA = new ArrayList<>();
-        List<Entry> entriesB = new ArrayList<>();
-        List<Entry> entriesC = new ArrayList<>();
-        List<String> dates = new ArrayList<>();
-
-        // 获取最近7天的数据
-        List<String> dbDates = dbHelper.getLastNDays(7);
-        
-        if (!dbDates.isEmpty())
+        try
         {
-            // 反转日期列表，使其按时间顺序排列
-            Collections.reverse(dbDates);
-            dates.addAll(dbDates);
+            // 准备三相数据
+            List<Entry> entriesA = new ArrayList<>();
+            List<Entry> entriesB = new ArrayList<>();
+            List<Entry> entriesC = new ArrayList<>();
+            List<String> dates = new ArrayList<>();
 
-            // 获取每天的数据
-            for (int i = 0; i < dates.size(); i++)
+            // 获取最近7天的数据
+            List<String> dbDates = dbHelper.getLastNDays(7);
+            
+            if (!dbDates.isEmpty())
             {
-                double[] powers = dbHelper.getTotalPowerByDate(dates.get(i));
-                entriesA.add(new Entry(i, (float)powers[0]));
-                entriesB.add(new Entry(i, (float)powers[1]));
-                entriesC.add(new Entry(i, (float)powers[2]));
+                // 反转日期列表，使其按时间顺序排列
+                Collections.reverse(dbDates);
+                dates.addAll(dbDates);
+
+                // 获取每天的数据
+                for (int i = 0; i < dates.size(); i++)
+                {
+                    try
+                    {
+                        double[] powers = dbHelper.getTotalPowerByDate(dates.get(i));
+                        if (powers != null && powers.length >= 3)
+                        {
+                            entriesA.add(new Entry(i, (float)powers[0]));
+                            entriesB.add(new Entry(i, (float)powers[1]));
+                            entriesC.add(new Entry(i, (float)powers[2]));
+                        }
+                        else
+                        {
+                            // 如果数据无效，添加0值
+                            entriesA.add(new Entry(i, 0f));
+                            entriesB.add(new Entry(i, 0f));
+                            entriesC.add(new Entry(i, 0f));
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        e.printStackTrace();
+                        // 发生异常时添加0值
+                        entriesA.add(new Entry(i, 0f));
+                        entriesB.add(new Entry(i, 0f));
+                        entriesC.add(new Entry(i, 0f));
+                    }
+                }
             }
-        }
-        else
-        {
-            // 没有数据时，添加空的日期标签和零值数据点
-            for (int i = 6; i >= 0; i--)
+            else
             {
-                dates.add(String.format("Day %d", i + 1));
-                entriesA.add(new Entry(6-i, 0f));
-                entriesB.add(new Entry(6-i, 0f));
-                entriesC.add(new Entry(6-i, 0f));
+                // 没有数据时，添加空的日期标签和零值数据点
+                for (int i = 6; i >= 0; i--)
+                {
+                    dates.add(String.format("Day %d", i + 1));
+                    entriesA.add(new Entry(6-i, 0f));
+                    entriesB.add(new Entry(6-i, 0f));
+                    entriesC.add(new Entry(6-i, 0f));
+                }
             }
+
+            // 创建数据集
+            LineDataSet setA = new LineDataSet(entriesA, "A相");
+            setA.setColor(Color.RED);
+            setA.setCircleColor(Color.RED);
+
+            LineDataSet setB = new LineDataSet(entriesB, "B相");
+            setB.setColor(Color.GREEN);
+            setB.setCircleColor(Color.GREEN);
+
+            LineDataSet setC = new LineDataSet(entriesC, "C相");
+            setC.setColor(Color.BLUE);
+            setC.setCircleColor(Color.BLUE);
+
+            // 配置数据集
+            for (LineDataSet set : new LineDataSet[]{setA, setB, setC})
+            {
+                set.setDrawCircles(true);
+                set.setCircleRadius(4f);
+                set.setDrawValues(false);
+                set.setLineWidth(2f);
+                set.setMode(LineDataSet.Mode.LINEAR);
+            }
+
+            // 设置X轴标签
+            lineChart.getXAxis().setValueFormatter(new IndexAxisValueFormatter(dates));
+
+            // 更新图表
+            LineData lineData = new LineData(setA, setB, setC);
+            lineChart.setData(lineData);
+
+            // 设置Y轴范围
+            if (dbDates.isEmpty())
+            {
+                // 没有数据时，设置一个合适的Y轴范围
+                lineChart.getAxisLeft().setAxisMinimum(0f);
+                lineChart.getAxisLeft().setAxisMaximum(100f);
+            }
+            else
+            {
+                // 有数据时，让图表自动调整范围
+                lineChart.getAxisLeft().resetAxisMinimum();
+                lineChart.getAxisLeft().resetAxisMaximum();
+            }
+
+            // 刷新图表
+            lineChart.invalidate();
         }
-
-        // 创建数据集
-        LineDataSet setA = new LineDataSet(entriesA, "A相");
-        setA.setColor(Color.RED);
-        setA.setCircleColor(Color.RED);
-
-        LineDataSet setB = new LineDataSet(entriesB, "B相");
-        setB.setColor(Color.GREEN);
-        setB.setCircleColor(Color.GREEN);
-
-        LineDataSet setC = new LineDataSet(entriesC, "C相");
-        setC.setColor(Color.BLUE);
-        setC.setCircleColor(Color.BLUE);
-
-        // 配置数据集
-        for (LineDataSet set : new LineDataSet[]{setA, setB, setC})
+        catch (Exception e)
         {
-            set.setDrawCircles(true);
-            set.setCircleRadius(4f);
-            set.setDrawValues(false);
-            set.setLineWidth(2f);
-            set.setMode(LineDataSet.Mode.LINEAR);
+            e.printStackTrace();
+            Toast.makeText(this, "更新图表时出错：" + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
-
-        // 设置X轴标签
-        lineChart.getXAxis().setValueFormatter(new IndexAxisValueFormatter(dates));
-
-        // 更新图表
-        LineData lineData = new LineData(setA, setB, setC);
-        lineChart.setData(lineData);
-
-        // 设置Y轴范围
-        if (dbDates.isEmpty())
-        {
-            // 没有数据时，设置一个合适的Y轴范围
-            lineChart.getAxisLeft().setAxisMinimum(0f);
-            lineChart.getAxisLeft().setAxisMaximum(100f);
-        }
-        else
-        {
-            // 有数据时，让图表自动调整范围
-            lineChart.getAxisLeft().resetAxisMinimum();
-            lineChart.getAxisLeft().resetAxisMaximum();
-        }
-
-        // 刷新图表
-        lineChart.invalidate();
     }
 }

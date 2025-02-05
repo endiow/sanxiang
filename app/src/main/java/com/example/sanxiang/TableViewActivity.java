@@ -15,6 +15,7 @@ import android.widget.EditText;
 import android.content.Intent;
 
 import com.example.sanxiang.db.DatabaseHelper;
+import com.example.sanxiang.util.DateValidator;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,12 +25,14 @@ public class TableViewActivity extends AppCompatActivity
     public static final int TYPE_USER_INFO = 1;
     public static final int TYPE_TOTAL_POWER = 2;
 
-    private DatabaseHelper dbHelper;
-    private RecyclerView recyclerView;
-    private TextView tvTitle;
-    private EditText etSearch;
+    private DatabaseHelper dbHelper;    // 数据库操作类
+    private RecyclerView recyclerView;  // 列表视图
+    private TextView tvTitle;         // 标题
+    private EditText etSearch;         // 搜索框
+
     private List<String> allRows = new ArrayList<>();
     private TableAdapter adapter;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState)
@@ -84,27 +87,143 @@ public class TableViewActivity extends AppCompatActivity
 
     private void setupTotalPowerSearch()
     {
+        EditText etSearch = findViewById(R.id.etSearch);
         etSearch.setHint("输入日期搜索...");
         etSearch.addTextChangedListener(new TextWatcher()
         {
             @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after)
-            {
-            }
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
 
             @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count)
-            {
-            }
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
 
             @Override
             public void afterTextChanged(Editable s)
             {
-                filterTotalPower(s.toString());
+                String searchQuery = s.toString().trim();
+                if (searchQuery.isEmpty())
+                {
+                    adapter.updateData(allRows);
+                    return;
+                }
+
+                List<String> filteredList = new ArrayList<>();
+                try
+                {
+                    // 不管日期格式是否完整，都尝试进行匹配
+                    for (String row : allRows)
+                    {
+                        // 提取行中的日期部分
+                        int dateStart = row.indexOf("日期：") + 3;
+                        int dateEnd = row.indexOf("\n", dateStart);
+                        if (dateStart >= 3 && dateEnd > dateStart)
+                        {
+                            String rowDate = row.substring(dateStart, dateEnd).trim();
+                            
+                            // 首先尝试精确匹配（如果输入的是有效日期）
+                            if (DateValidator.isValidDateFormat(searchQuery, null))
+                            {
+                                String standardizedSearchDate = DateValidator.standardizeDate(searchQuery);
+                                String standardizedRowDate = DateValidator.standardizeDate(rowDate);
+                                
+                                if (standardizedSearchDate != null && 
+                                    standardizedRowDate != null && 
+                                    standardizedRowDate.equals(standardizedSearchDate))
+                                {
+                                    filteredList.add(row);
+                                    continue;
+                                }
+                            }
+                            
+                            // 如果精确匹配失败，进行模糊匹配
+                            // 将日期拆分为年月日
+                            String[] rowParts = rowDate.split("[-/.]");
+                            if (rowParts.length == 3)
+                            {
+                                try
+                                {
+                                    // 处理年份
+                                    String year = rowParts[0];
+                                    if (cleanNumber(year).contains(cleanNumber(searchQuery)))
+                                    {
+                                        filteredList.add(row);
+                                        continue;
+                                    }
+                                    
+                                    // 处理月份
+                                    String month = rowParts[1];
+                                    if (searchQuery.length() <= 2)
+                                    {
+                                        int searchMonth = Integer.parseInt(searchQuery);
+                                        int rowMonth = Integer.parseInt(month);
+                                        if (searchMonth == rowMonth)
+                                        {
+                                            filteredList.add(row);
+                                            continue;
+                                        }
+                                    }
+                                    
+                                    // 处理日期
+                                    String day = rowParts[2];
+                                    if (searchQuery.length() <= 2)
+                                    {
+                                        int searchDay = Integer.parseInt(searchQuery);
+                                        int rowDay = Integer.parseInt(day);
+                                        if (searchDay == rowDay)
+                                        {
+                                            filteredList.add(row);
+                                            continue;
+                                        }
+                                    }
+                                    
+                                    // 处理组合日期（如2024-2）
+                                    String[] searchParts = searchQuery.split("[-/.]");
+                                    if (searchParts.length == 2)
+                                    {
+                                        int searchYear = Integer.parseInt(searchParts[0].length() == 2 ? "20" + searchParts[0] : searchParts[0]);
+                                        int searchMonth = Integer.parseInt(searchParts[1]);
+                                        int rowYear = Integer.parseInt(year.length() == 2 ? "20" + year : year);
+                                        int rowMonth = Integer.parseInt(month);
+                                        if (searchYear == rowYear && searchMonth == rowMonth)
+                                        {
+                                            filteredList.add(row);
+                                            continue;
+                                        }
+                                    }
+                                }
+                                catch (NumberFormatException e)
+                                {
+                                    // 如果数字解析失败，继续下一次循环
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                    adapter.updateData(filteredList);
+                }
+                catch (Exception e)
+                {
+                    e.printStackTrace();
+                    adapter.updateData(allRows);
+                }
             }
         });
     }
 
+    // 清理数字字符串，移除前导零
+    private String cleanNumber(String number)
+    {
+        try
+        {
+            return String.valueOf(Integer.parseInt(number));
+        }
+        catch (NumberFormatException e)
+        {
+            return number;
+        }
+    }
+
+    // 用户信息搜索
     private void filterUserInfo(String query)
     {
         List<String> filteredList = new ArrayList<>();
@@ -118,17 +237,85 @@ public class TableViewActivity extends AppCompatActivity
         adapter.updateData(filteredList);
     }
 
+    // 总电量搜索
     private void filterTotalPower(String query)
     {
-        List<String> filteredList = new ArrayList<>();
-        for (String row : allRows)
+        if (query == null || query.trim().isEmpty())
         {
-            if (row.toLowerCase().contains(query.toLowerCase()))
-            {
-                filteredList.add(row);
-            }
+            adapter.updateData(allRows);
+            return;
         }
-        adapter.updateData(filteredList);
+
+        try
+        {
+            List<String> filteredList = new ArrayList<>();
+            String searchQuery = query.trim();
+            
+            // 如果输入的是完整日期，尝试标准化格式
+            if (searchQuery.length() >= 6)  // 至少包含年月日
+            {
+                try
+                {
+                    if (DateValidator.isValidDateFormat(searchQuery, null))
+                    {
+                        // 将日期转换为标准格式
+                        String[] parts = searchQuery.split("[-/.]");
+                        String standardDate = String.format("%04d-%02d-%02d",
+                            parts[0].length() == 2 ? Integer.parseInt("20" + parts[0]) : Integer.parseInt(parts[0]),
+                            Integer.parseInt(parts[1]),
+                            Integer.parseInt(parts[2]));
+                        searchQuery = standardDate;
+                    }
+                }
+                catch (Exception e)
+                {
+                    // 如果转换失败，使用原始输入继续搜索
+                }
+            }
+
+            // 搜索包含输入日期的记录
+            for (String row : allRows)
+            {
+                // 提取行中的日期部分
+                int dateStart = row.indexOf("日期：") + 3;
+                int dateEnd = row.indexOf("\n", dateStart);
+                if (dateStart >= 3 && dateEnd > dateStart)
+                {
+                    String rowDate = row.substring(dateStart, dateEnd).trim();
+                    
+                    // 尝试将行中的日期也标准化
+                    try
+                    {
+                        if (DateValidator.isValidDateFormat(rowDate, null))
+                        {
+                            String[] parts = rowDate.split("[-/.]");
+                            String standardRowDate = String.format("%04d-%02d-%02d",
+                                parts[0].length() == 2 ? Integer.parseInt("20" + parts[0]) : Integer.parseInt(parts[0]),
+                                Integer.parseInt(parts[1]),
+                                Integer.parseInt(parts[2]));
+                            rowDate = standardRowDate;
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        // 如果转换失败，使用原始日期继续比较
+                    }
+
+                    // 如果标准化后的日期匹配，或者原始输入包含在日期中
+                    if (rowDate.contains(searchQuery) || searchQuery.contains(rowDate))
+                    {
+                        filteredList.add(row);
+                    }
+                }
+            }
+            adapter.updateData(filteredList);
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+            // 如果发生错误，显示所有数据
+            adapter.updateData(allRows);
+        }
     }
 
     private void displayUserInfo()
@@ -196,8 +383,7 @@ public class TableViewActivity extends AppCompatActivity
         @Override
         public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType)
         {
-            View view = LayoutInflater.from(parent.getContext())
-                .inflate(R.layout.item_table_row, parent, false);
+            View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_table_row, parent, false);
             return new ViewHolder(view);
         }
 

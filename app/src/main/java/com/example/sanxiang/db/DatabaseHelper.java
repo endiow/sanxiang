@@ -287,15 +287,44 @@ public class DatabaseHelper extends SQLiteOpenHelper
     public List<String> getAllUserIds()
     {
         List<String> userIds = new ArrayList<>();
-        SQLiteDatabase db = getReadableDatabase();
-        String query = "SELECT " + COLUMN_USER_ID + " FROM " + TABLE_USER_INFO;
-        Cursor cursor = db.rawQuery(query, null);
-
-        while (cursor.moveToNext())
+        SQLiteDatabase db = null;
+        Cursor cursor = null;
+        
+        try
         {
-            userIds.add(cursor.getString(0));
+            db = getReadableDatabase();
+            String query = "SELECT " + COLUMN_USER_ID + " FROM " + TABLE_USER_INFO;
+            cursor = db.rawQuery(query, null);
+            
+            if (cursor != null && cursor.moveToFirst())
+            {
+                int userIdIndex = cursor.getColumnIndex(COLUMN_USER_ID);
+                if (userIdIndex >= 0)
+                {
+                    do
+                    {
+                        String userId = cursor.getString(userIdIndex);
+                        if (userId != null && !userId.isEmpty())
+                        {
+                            userIds.add(userId);
+                        }
+                    }
+                    while (cursor.moveToNext());
+                }
+            }
         }
-        cursor.close();
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+        finally
+        {
+            if (cursor != null)
+            {
+                cursor.close();
+            }
+        }
+        
         return userIds;
     }
     
@@ -303,71 +332,137 @@ public class DatabaseHelper extends SQLiteOpenHelper
     public List<String> getLastNDays(int n)
     {
         List<String> dates = new ArrayList<>();
-        SQLiteDatabase db = getReadableDatabase();
+        SQLiteDatabase db = null;
+        Cursor cursor = null;
         
-        // 从总电量表中获取日期
-        String query = "SELECT DISTINCT " + COLUMN_DATE + 
-                      " FROM " + TABLE_TOTAL_POWER + 
-                      " ORDER BY " + COLUMN_DATE + " DESC" +
-                      " LIMIT " + n;
-        
-        Cursor cursor = db.rawQuery(query, null);
-        if (cursor.moveToFirst())
+        try
         {
-            do
+            db = getReadableDatabase();
+            
+            // 从总电量表中获取日期
+            String query = "SELECT DISTINCT " + COLUMN_DATE + 
+                          " FROM " + TABLE_TOTAL_POWER + 
+                          " ORDER BY " + COLUMN_DATE + " DESC" +
+                          " LIMIT " + n;
+            
+            cursor = db.rawQuery(query, null);
+            if (cursor != null && cursor.moveToFirst())
             {
-                dates.add(cursor.getString(0));
+                do
+                {
+                    dates.add(cursor.getString(0));
+                }
+                while (cursor.moveToNext());
             }
-            while (cursor.moveToNext());
         }
-        cursor.close();
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+        finally
+        {
+            if (cursor != null)
+            {
+                cursor.close();
+            }
+        }
         return dates;
     }
 
     // 获取最新日期
     public String getLatestDate()
     {
-        List<String> dates = getLastNDays(1);
-        return dates.isEmpty() ? null : dates.get(0);
+        try
+        {
+            List<String> dates = getLastNDays(1);
+            return dates != null && !dates.isEmpty() ? dates.get(0) : null;
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+            return null;
+        }
     }
 
     // 获取currentDate前一天的日期
     public String getPrevDate(String currentDate)
     {
-        SQLiteDatabase db = getReadableDatabase();
-        String query = "SELECT " + COLUMN_DATE + 
-                      " FROM " + TABLE_TOTAL_POWER + 
-                      " WHERE " + COLUMN_DATE + " < ?" +
-                      " ORDER BY " + COLUMN_DATE + " DESC" +
-                      " LIMIT 1";
-                      
-        Cursor cursor = db.rawQuery(query, new String[]{currentDate});
-        String date = null;
-        if (cursor.moveToFirst())
+        if (currentDate == null || currentDate.isEmpty())
         {
-            date = cursor.getString(0);
+            return null;
         }
-        cursor.close();
+
+        SQLiteDatabase db = null;
+        Cursor cursor = null;
+        String date = null;
+        
+        try
+        {
+            db = getReadableDatabase();
+            String query = "SELECT " + COLUMN_DATE + 
+                          " FROM " + TABLE_TOTAL_POWER + 
+                          " WHERE " + COLUMN_DATE + " < ?" +
+                          " ORDER BY " + COLUMN_DATE + " DESC" +
+                          " LIMIT 1";
+                          
+            cursor = db.rawQuery(query, new String[]{currentDate});
+            if (cursor != null && cursor.moveToFirst())
+            {
+                date = cursor.getString(0);
+            }
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+        finally
+        {
+            if (cursor != null)
+            {
+                cursor.close();
+            }
+        }
         return date;
     }
 
     // 获取currentDate下一天的日期
     public String getNextDate(String currentDate)
     {
-        SQLiteDatabase db = getReadableDatabase();
-        String query = "SELECT " + COLUMN_DATE + 
-                      " FROM " + TABLE_TOTAL_POWER + 
-                      " WHERE " + COLUMN_DATE + " > ?" +
-                      " ORDER BY " + COLUMN_DATE + " ASC" +
-                      " LIMIT 1";
-                      
-        Cursor cursor = db.rawQuery(query, new String[]{currentDate});
-        String date = null;
-        if (cursor.moveToFirst())
+        if (currentDate == null || currentDate.isEmpty())
         {
-            date = cursor.getString(0);
+            return null;
         }
-        cursor.close();
+
+        SQLiteDatabase db = null;
+        Cursor cursor = null;
+        String date = null;
+        
+        try
+        {
+            db = getReadableDatabase();
+            String query = "SELECT " + COLUMN_DATE + 
+                          " FROM " + TABLE_TOTAL_POWER + 
+                          " WHERE " + COLUMN_DATE + " > ?" +
+                          " ORDER BY " + COLUMN_DATE + " ASC" +
+                          " LIMIT 1";
+                          
+            cursor = db.rawQuery(query, new String[]{currentDate});
+            if (cursor != null && cursor.moveToFirst())
+            {
+                date = cursor.getString(0);
+            }
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+        finally
+        {
+            if (cursor != null)
+            {
+                cursor.close();
+            }
+        }
         return date;
     }
 
@@ -436,44 +531,111 @@ public class DatabaseHelper extends SQLiteOpenHelper
     // 获取指定日期的用户数据
     public List<UserData> getUserDataByDate(String date)
     {
-        List<UserData> dataList = new ArrayList<>();
-        SQLiteDatabase db = getReadableDatabase();
-        
-        // 获取所有用户ID
-        List<String> userIds = getAllUserIds();
-        
-        for (String userId : userIds)
+        if (date == null || date.isEmpty())
         {
-            // 获取用户信息
-            String userQuery = "SELECT * FROM " + TABLE_USER_INFO + " WHERE " + COLUMN_USER_ID + " = ?";
-            Cursor userCursor = db.rawQuery(userQuery, new String[]{userId});
+            return new ArrayList<>();
+        }
+
+        List<UserData> dataList = new ArrayList<>();
+        SQLiteDatabase db = null;
+        Cursor userCursor = null;
+        Cursor dataCursor = null;
+        
+        try
+        {
+            db = getReadableDatabase();
             
-            if (userCursor.moveToFirst())
+            // 获取所有用户ID
+            List<String> userIds = getAllUserIds();
+            
+            for (String userId : userIds)
             {
-                String userName = userCursor.getString(userCursor.getColumnIndex(COLUMN_USER_NAME));
-                String routeNumber = userCursor.getString(userCursor.getColumnIndex(COLUMN_ROUTE_NUMBER));
-                String routeName = userCursor.getString(userCursor.getColumnIndex(COLUMN_ROUTE_NAME));
-                userCursor.close();
-                
-                // 获取用户当天数据
-                String userDataTable = "user_data_" + userId;
-                String dataQuery = "SELECT * FROM " + userDataTable + " WHERE " + COLUMN_DATE + " = ?";
-                Cursor dataCursor = db.rawQuery(dataQuery, new String[]{date});
-                
-                if (dataCursor.moveToFirst())
+                try
                 {
-                    UserData userData = new UserData();
-                    userData.setDate(date);
-                    userData.setUserId(userId);
-                    userData.setUserName(userName);
-                    userData.setRouteNumber(routeNumber);
-                    userData.setRouteName(routeName);
-                    userData.setPhase(dataCursor.getString(dataCursor.getColumnIndex(COLUMN_PHASE)));
-                    userData.setPhaseAPower(dataCursor.getDouble(dataCursor.getColumnIndex(COLUMN_PHASE_A_POWER)));
-                    userData.setPhaseBPower(dataCursor.getDouble(dataCursor.getColumnIndex(COLUMN_PHASE_B_POWER)));
-                    userData.setPhaseCPower(dataCursor.getDouble(dataCursor.getColumnIndex(COLUMN_PHASE_C_POWER)));
-                    dataList.add(userData);
+                    // 获取用户信息
+                    String userQuery = "SELECT * FROM " + TABLE_USER_INFO + " WHERE " + COLUMN_USER_ID + " = ?";
+                    userCursor = db.rawQuery(userQuery, new String[]{userId});
+                    
+                    if (userCursor != null && userCursor.moveToFirst())
+                    {
+                        String userName = userCursor.getString(userCursor.getColumnIndex(COLUMN_USER_NAME));
+                        String routeNumber = userCursor.getString(userCursor.getColumnIndex(COLUMN_ROUTE_NUMBER));
+                        String routeName = userCursor.getString(userCursor.getColumnIndex(COLUMN_ROUTE_NAME));
+                        
+                        // 检查用户数据表是否存在
+                        String userDataTable = "user_data_" + userId;
+                        String tableExistsQuery = "SELECT name FROM sqlite_master WHERE type='table' AND name=?";
+                        Cursor tableCheckCursor = db.rawQuery(tableExistsQuery, new String[]{userDataTable});
+                        boolean tableExists = tableCheckCursor != null && tableCheckCursor.moveToFirst();
+                        if (tableCheckCursor != null)
+                        {
+                            tableCheckCursor.close();
+                        }
+                        
+                        if (tableExists)
+                        {
+                            // 获取用户当天数据
+                            String dataQuery = "SELECT * FROM " + userDataTable + " WHERE " + COLUMN_DATE + " = ?";
+                            dataCursor = db.rawQuery(dataQuery, new String[]{date});
+                            
+                            if (dataCursor != null && dataCursor.moveToFirst())
+                            {
+                                UserData userData = new UserData();
+                                userData.setDate(date);
+                                userData.setUserId(userId);
+                                userData.setUserName(userName);
+                                userData.setRouteNumber(routeNumber);
+                                userData.setRouteName(routeName);
+                                
+                                int phaseIndex = dataCursor.getColumnIndex(COLUMN_PHASE);
+                                int phaseAPowerIndex = dataCursor.getColumnIndex(COLUMN_PHASE_A_POWER);
+                                int phaseBPowerIndex = dataCursor.getColumnIndex(COLUMN_PHASE_B_POWER);
+                                int phaseCPowerIndex = dataCursor.getColumnIndex(COLUMN_PHASE_C_POWER);
+                                
+                                if (phaseIndex >= 0 && phaseAPowerIndex >= 0 && 
+                                    phaseBPowerIndex >= 0 && phaseCPowerIndex >= 0)
+                                {
+                                    userData.setPhase(dataCursor.getString(phaseIndex));
+                                    userData.setPhaseAPower(dataCursor.getDouble(phaseAPowerIndex));
+                                    userData.setPhaseBPower(dataCursor.getDouble(phaseBPowerIndex));
+                                    userData.setPhaseCPower(dataCursor.getDouble(phaseCPowerIndex));
+                                    dataList.add(userData);
+                                }
+                            }
+                        }
+                    }
                 }
+                catch (Exception e)
+                {
+                    e.printStackTrace();
+                }
+                finally
+                {
+                    if (userCursor != null)
+                    {
+                        userCursor.close();
+                        userCursor = null;
+                    }
+                    if (dataCursor != null)
+                    {
+                        dataCursor.close();
+                        dataCursor = null;
+                    }
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+        finally
+        {
+            if (userCursor != null)
+            {
+                userCursor.close();
+            }
+            if (dataCursor != null)
+            {
                 dataCursor.close();
             }
         }
@@ -489,43 +651,29 @@ public class DatabaseHelper extends SQLiteOpenHelper
         
         try
         {
-            // 首先获取用户基本信息
+            // 检查用户是否存在
             String userQuery = "SELECT * FROM " + TABLE_USER_INFO + " WHERE " + COLUMN_USER_ID + " = ?";
             Cursor userCursor = db.rawQuery(userQuery, new String[]{userId});
             
-            String userName = "";
-            String routeNumber = "";
-            String routeName = "";
-            String phase = "";
-            
             if (userCursor != null && userCursor.moveToFirst())
             {
-                int userNameIndex = userCursor.getColumnIndex(COLUMN_USER_NAME);
-                int routeNumberIndex = userCursor.getColumnIndex(COLUMN_ROUTE_NUMBER);
-                int routeNameIndex = userCursor.getColumnIndex(COLUMN_ROUTE_NAME);
-                
-                if (userNameIndex >= 0) userName = userCursor.getString(userNameIndex);
-                if (routeNumberIndex >= 0) routeNumber = userCursor.getString(routeNumberIndex);
-                if (routeNameIndex >= 0) routeName = userCursor.getString(routeNameIndex);
-                
+                // 获取用户基本信息
+                String userName = userCursor.getString(userCursor.getColumnIndex(COLUMN_USER_NAME));
+                String routeNumber = userCursor.getString(userCursor.getColumnIndex(COLUMN_ROUTE_NUMBER));
+                String routeName = userCursor.getString(userCursor.getColumnIndex(COLUMN_ROUTE_NAME));
                 userCursor.close();
                 
-                // 获取用户电量数据，按日期降序排序
+                // 获取用户电量数据
                 String userDataTable = "user_data_" + userId;
-                String dataQuery = "SELECT " + 
-                    COLUMN_DATE + ", " +
-                    COLUMN_PHASE + ", " +
-                    COLUMN_PHASE_A_POWER + ", " +
-                    COLUMN_PHASE_B_POWER + ", " +
-                    COLUMN_PHASE_C_POWER +
-                    " FROM " + userDataTable + 
-                    " ORDER BY " + COLUMN_DATE + " DESC" +
-                    " LIMIT " + n;
+                String dataQuery = "SELECT * FROM " + userDataTable + 
+                                 " ORDER BY " + COLUMN_DATE + " DESC" +
+                                 " LIMIT " + n;
                 
                 Cursor dataCursor = db.rawQuery(dataQuery, null);
                 
                 if (dataCursor != null)
                 {
+                    // 获取列索引
                     int dateIndex = dataCursor.getColumnIndex(COLUMN_DATE);
                     int phaseIndex = dataCursor.getColumnIndex(COLUMN_PHASE);
                     int phaseAPowerIndex = dataCursor.getColumnIndex(COLUMN_PHASE_A_POWER);
@@ -533,18 +681,19 @@ public class DatabaseHelper extends SQLiteOpenHelper
                     int phaseCPowerIndex = dataCursor.getColumnIndex(COLUMN_PHASE_C_POWER);
                     
                     // 检查所有必需的列是否存在
-                    if (dateIndex >= 0 && phaseAPowerIndex >= 0 && 
-                        phaseBPowerIndex >= 0 && phaseCPowerIndex >= 0)
+                    if (dateIndex >= 0 && phaseIndex >= 0 && 
+                        phaseAPowerIndex >= 0 && phaseBPowerIndex >= 0 && 
+                        phaseCPowerIndex >= 0)
                     {
                         while (dataCursor.moveToNext())
                         {
                             UserData userData = new UserData();
+                            userData.setDate(dataCursor.getString(dateIndex));
                             userData.setUserId(userId);
                             userData.setUserName(userName);
                             userData.setRouteNumber(routeNumber);
                             userData.setRouteName(routeName);
-                            userData.setPhase(phaseIndex >= 0 ? dataCursor.getString(phaseIndex) : "");
-                            userData.setDate(dataCursor.getString(dateIndex));
+                            userData.setPhase(dataCursor.getString(phaseIndex));
                             userData.setPhaseAPower(dataCursor.getDouble(phaseAPowerIndex));
                             userData.setPhaseBPower(dataCursor.getDouble(phaseBPowerIndex));
                             userData.setPhaseCPower(dataCursor.getDouble(phaseCPowerIndex));
@@ -555,7 +704,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
                     dataCursor.close();
                 }
             }
-            if (userCursor != null && !userCursor.isClosed())
+            else if (userCursor != null)
             {
                 userCursor.close();
             }
@@ -563,10 +712,6 @@ public class DatabaseHelper extends SQLiteOpenHelper
         catch (Exception e)
         {
             e.printStackTrace();
-        }
-        finally
-        {
-            db.close();
         }
         
         return userDataList;

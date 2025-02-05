@@ -8,9 +8,11 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.example.sanxiang.data.UserData;
 import com.example.sanxiang.db.DatabaseHelper;
+import com.example.sanxiang.util.DateValidator;
 import com.github.mikephil.charting.charts.LineChart;
 import com.github.mikephil.charting.components.XAxis;
 import com.github.mikephil.charting.components.YAxis;
+
 import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
@@ -24,13 +26,13 @@ import java.util.List;
 
 public class UserDetailActivity extends AppCompatActivity
 {
-    private DatabaseHelper dbHelper;
-    private LineChart lineChart;
-    private TextView tvUserInfo;
-    private TextView tvCurrentPower;
-    private EditText etDate;
-    private String userId;
-    private List<String> dates = new ArrayList<>();
+    private DatabaseHelper dbHelper;    // 数据库操作类
+    private LineChart lineChart;       // 图表
+    private TextView tvUserInfo;       // 用户信息
+    private TextView tvCurrentPower;   // 当前电量
+    private EditText etDate;           // 日期输入框
+    private String userId;             // 用户编号
+    private List<String> dates = new ArrayList<>(); // 日期列表
 
     @Override
     protected void onCreate(Bundle savedInstanceState)
@@ -76,122 +78,10 @@ public class UserDetailActivity extends AppCompatActivity
 
     private void initViews()
     {
-        lineChart = findViewById(R.id.lineChart);
-        tvUserInfo = findViewById(R.id.tvUserInfo);
-        tvCurrentPower = findViewById(R.id.tvCurrentPower);
-        etDate = findViewById(R.id.etDate);
-    }
-
-    private void setupDateInput()
-    {
-        // 设置日期输入监听
-        etDate.setOnEditorActionListener((v, actionId, event) -> 
-        {
-            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE)
-            {
-                String date = etDate.getText().toString().trim();
-                if (isValidDateFormat(date))
-                {
-                    highlightDate(date);
-                }
-                return true;
-            }
-            return false;
-        });
-
-        // 设置前一天按钮点击事件
-        findViewById(R.id.btnPrevDay).setOnClickListener(v -> 
-        {
-            String currentDate = etDate.getText().toString().trim();
-            if (isValidDateFormat(currentDate))
-            {
-                int currentIndex = dates.indexOf(currentDate);
-                if (currentIndex > 0)
-                {
-                    String prevDate = dates.get(currentIndex - 1);
-                    etDate.setText(prevDate);
-                    highlightDate(prevDate);
-                }
-                else
-                {
-                    Toast.makeText(this, "已经是最早的日期", Toast.LENGTH_SHORT).show();
-                }
-            }
-        });
-
-        // 设置后一天按钮点击事件
-        findViewById(R.id.btnNextDay).setOnClickListener(v -> 
-        {
-            String currentDate = etDate.getText().toString().trim();
-            if (isValidDateFormat(currentDate))
-            {
-                int currentIndex = dates.indexOf(currentDate);
-                if (currentIndex < dates.size() - 1)
-                {
-                    String nextDate = dates.get(currentIndex + 1);
-                    etDate.setText(nextDate);
-                    highlightDate(nextDate);
-                }
-                else
-                {
-                    Toast.makeText(this, "已经是最新的日期", Toast.LENGTH_SHORT).show();
-                }
-            }
-        });
-    }
-
-    private boolean isValidDateFormat(String date)
-    {
-        String regex = "\\d{4}-\\d{2}-\\d{2}";
-        if (!date.matches(regex))
-        {
-            Toast.makeText(this, "日期格式无效，请使用yyyy-MM-dd格式", Toast.LENGTH_SHORT).show();
-            return false;
-        }
-        return true;
-    }
-
-    private void highlightDate(String date)
-    {
-        int index = dates.indexOf(date);
-        if (index >= 0)
-        {
-            lineChart.highlightValue(index, 0);
-            updatePowerInfo(date);
-            // 确保高亮的点在可见范围内
-            lineChart.moveViewToX(Math.max(0, index - 2));
-        }
-        else
-        {
-            Toast.makeText(this, "未找到该日期的数据", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void updatePowerInfo(String date)
-    {
-        List<UserData> userDataList = dbHelper.getUserDataByDate(date);
-        for (UserData data : userDataList)
-        {
-            if (data.getUserId().equals(userId))
-            {
-                String powerInfo = String.format(
-                    "A相电量：%.2f\n" +
-                    "B相电量：%.2f\n" +
-                    "C相电量：%.2f",
-                    data.getPhaseAPower(),
-                    data.getPhaseBPower(),
-                    data.getPhaseCPower()
-                );
-                tvCurrentPower.setText(powerInfo);
-                return;
-            }
-        }
-        tvCurrentPower.setText(String.format(
-            "A相电量：%.2f\n" +
-            "B相电量：%.2f\n" +
-            "C相电量：%.2f",
-            0.0, 0.0, 0.0
-        ));
+        lineChart = findViewById(R.id.lineChart);   // 图表
+        tvUserInfo = findViewById(R.id.tvUserInfo);     // 用户信息
+        tvCurrentPower = findViewById(R.id.tvCurrentPower);     // 当前电量
+        etDate = findViewById(R.id.etDate);     // 日期输入框
     }
 
     private void setupChart()
@@ -250,13 +140,176 @@ public class UserDetailActivity extends AppCompatActivity
             public void onNothingSelected()
             {
                 String currentDate = etDate.getText().toString().trim();
-                if (isValidDateFormat(currentDate))
+                if (DateValidator.isValidDateFormat(currentDate, etDate))
                 {
                     updatePowerInfo(currentDate);
                 }
             }
         });
     }
+
+    private void setupDateInput()
+    {
+        // 设置日期输入监听
+        etDate.setOnEditorActionListener((v, actionId, event) -> 
+        {
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE)
+            {
+                String date = etDate.getText().toString().trim();
+                if (DateValidator.isValidDateFormat(date, etDate))
+                {
+                    highlightDate(date);
+                }
+                return true;
+            }
+            return false;
+        });
+
+        // 设置前一天按钮点击事件
+        findViewById(R.id.btnPrevDay).setOnClickListener(v -> 
+        {
+            String currentDate = etDate.getText().toString().trim();
+            if (DateValidator.isValidDateFormat(currentDate, etDate))
+            {
+                int currentIndex = dates.indexOf(currentDate);
+                if (currentIndex > 0)
+                {
+                    String prevDate = dates.get(currentIndex - 1);
+                    etDate.setText(prevDate);
+                    highlightDate(prevDate);
+                }
+                else
+                {
+                    Toast.makeText(this, "已经是最早的日期", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+
+        // 设置后一天按钮点击事件
+        findViewById(R.id.btnNextDay).setOnClickListener(v -> 
+        {
+            String currentDate = etDate.getText().toString().trim();
+            if (DateValidator.isValidDateFormat(currentDate, etDate))
+            {
+                int currentIndex = dates.indexOf(currentDate);
+                if (currentIndex < dates.size() - 1)
+                {
+                    String nextDate = dates.get(currentIndex + 1);
+                    etDate.setText(nextDate);
+                    highlightDate(nextDate);
+                }
+                else
+                {
+                    Toast.makeText(this, "已经是最新的日期", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+    }
+
+    private void highlightDate(String date)
+    {
+        try
+        {
+            // 确保日期格式标准化
+            if (!DateValidator.isValidDateFormat(date, null))
+            {
+                Toast.makeText(this, "日期格式无效", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            
+            // 将日期转换为标准格式 (yyyy-MM-dd)
+            String[] parts = date.trim().split("[-/.]");
+            String standardDate = String.format("%04d-%02d-%02d",
+                parts[0].length() == 2 ? Integer.parseInt("20" + parts[0]) : Integer.parseInt(parts[0]),
+                Integer.parseInt(parts[1]),
+                Integer.parseInt(parts[2]));
+            
+            int index = -1;
+            // 查找匹配的日期（考虑不同的格式）
+            for (int i = 0; i < dates.size(); i++)
+            {
+                String[] dateParts = dates.get(i).split("[-/.]");
+                String currentStandardDate = String.format("%04d-%02d-%02d",
+                    dateParts[0].length() == 2 ? Integer.parseInt("20" + dateParts[0]) : Integer.parseInt(dateParts[0]),
+                    Integer.parseInt(dateParts[1]),
+                    Integer.parseInt(dateParts[2]));
+                
+                if (currentStandardDate.equals(standardDate))
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            if (index >= 0)
+            {
+                lineChart.highlightValue(index, 0);
+                updatePowerInfo(standardDate);
+                // 确保高亮的点在可见范围内
+                lineChart.moveViewToX(Math.max(0, index - 2));
+            }
+            else
+            {
+                Toast.makeText(this, "未找到该日期的数据", Toast.LENGTH_SHORT).show();
+            }
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+            Toast.makeText(this, "日期处理出错：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void updatePowerInfo(String date)
+    {
+        try
+        {
+            // 确保日期格式标准化
+            if (!DateValidator.isValidDateFormat(date, null))
+            {
+                Toast.makeText(this, "日期格式无效", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // 将日期转换为标准格式
+            String[] parts = date.trim().split("[-/.]");
+            String standardDate = String.format("%04d-%02d-%02d",
+                parts[0].length() == 2 ? Integer.parseInt("20" + parts[0]) : Integer.parseInt(parts[0]),
+                Integer.parseInt(parts[1]),
+                Integer.parseInt(parts[2]));
+
+            List<UserData> userDataList = dbHelper.getUserDataByDate(standardDate);
+            for (UserData data : userDataList)
+            {
+                if (data.getUserId().equals(userId))
+                {
+                    String powerInfo = String.format(
+                        "A相电量：%.2f\n" +
+                        "B相电量：%.2f\n" +
+                        "C相电量：%.2f",
+                        data.getPhaseAPower(),
+                        data.getPhaseBPower(),
+                        data.getPhaseCPower()
+                    );
+                    tvCurrentPower.setText(powerInfo);
+                    return;
+                }
+            }
+            tvCurrentPower.setText(String.format(
+                "A相电量：%.2f\n" +
+                "B相电量：%.2f\n" +
+                "C相电量：%.2f",
+                0.0, 0.0, 0.0
+            ));
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+            Toast.makeText(this, "获取电量数据出错：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    
 
     private void updateChart()
     {

@@ -25,28 +25,51 @@ public class UserDataAdapter extends RecyclerView.Adapter<UserDataAdapter.ViewHo
     // 所有数据的备份，用于搜索功能
     private List<UserData> allData = new ArrayList<>();
 
-    /**
-     * 设置新的数据列表
-     */
+    //设置新的数据列表
     public void setData(List<UserData> newData)
     {
-        this.dataList = new ArrayList<>(newData);
-        this.allData = new ArrayList<>(newData);
+        if (newData == null)
+        {
+            newData = new ArrayList<>();
+        }
+        
+        synchronized (this)
+        {
+            this.dataList = new ArrayList<>();
+            this.allData = new ArrayList<>();
+            
+            if (!newData.isEmpty())
+            {
+                this.dataList.addAll(newData);
+                this.allData.addAll(newData);
+            }
+        }
         notifyDataSetChanged();
     }
 
-    /**
-     * 根据用户ID过滤数据
-     */
+    //根据用户ID过滤数据
     public void filter(String userId)
     {
-        if (userId == null || userId.trim().isEmpty())
+        synchronized (this)
         {
-            dataList = new ArrayList<>(allData);
-        }
-        else
-        {
-            dataList = allData.stream().filter(d -> d.getUserId().contains(userId.trim())).collect(Collectors.toList());
+            if (userId == null || userId.trim().isEmpty())
+            {
+                dataList = new ArrayList<>(allData);
+            }
+            else
+            {
+                try
+                {
+                    dataList = allData.stream()
+                        .filter(d -> d != null && d.getUserId() != null && d.getUserId().contains(userId.trim()))
+                        .collect(Collectors.toList());
+                }
+                catch (Exception e)
+                {
+                    e.printStackTrace();
+                    dataList = new ArrayList<>();
+                }
+            }
         }
         notifyDataSetChanged();
     }
@@ -63,21 +86,34 @@ public class UserDataAdapter extends RecyclerView.Adapter<UserDataAdapter.ViewHo
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position)
     {
-        // 绑定数据到视图
-        UserData data = dataList.get(position);
-        holder.tvUserInfo.setText(String.format("用户编号：%s  用户名称：%s", 
-                                  data.getUserId(), data.getUserName()));
-        holder.tvRouteInfo.setText(String.format("回路编号：%s  线路名称：%s", 
-                                   data.getRouteNumber(), data.getRouteName()));
-        holder.tvPhaseInfo.setText(String.format("相位：%s", data.getPhase()));
-        holder.tvPowerInfo.setText(String.format("A相电量：%.2f  B相电量：%.2f  C相电量：%.2f",
-                                   data.getPhaseAPower(), data.getPhaseBPower(), data.getPhaseCPower()));
+        try
+        {
+            // 绑定数据到视图
+            UserData data = dataList.get(position);
+            if (data != null)
+            {
+                holder.tvUserInfo.setText(String.format("用户编号：%s  用户名称：%s", 
+                                          data.getUserId(), data.getUserName()));
+                holder.tvRouteInfo.setText(String.format("回路编号：%s  线路名称：%s", 
+                                           data.getRouteNumber(), data.getRouteName()));
+                holder.tvPhaseInfo.setText(String.format("相位：%s", data.getPhase()));
+                holder.tvPowerInfo.setText(String.format("A相电量：%.2f  B相电量：%.2f  C相电量：%.2f",
+                                           data.getPhaseAPower(), data.getPhaseBPower(), data.getPhaseCPower()));
+            }
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
     }
 
     @Override
     public int getItemCount()
     {
-        return dataList.size();
+        synchronized (this)
+        {
+            return dataList != null ? dataList.size() : 0;
+        }
     }
 
     /**

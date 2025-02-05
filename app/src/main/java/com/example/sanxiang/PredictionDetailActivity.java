@@ -2,6 +2,7 @@ package com.example.sanxiang;
 
 import android.graphics.Color;
 import android.os.Bundle;
+import android.widget.EditText;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -26,12 +27,18 @@ import java.util.List;
 import java.util.Map;
 
 public class PredictionDetailActivity extends AppCompatActivity 
-{
+{   
+    // 数据库操作类
     private DatabaseHelper dbHelper;
+    // 图表
     private LineChart lineChart;
+    // 用户信息
     private TextView tvUserInfo;
+    // 预测过程
     private TextView tvPredictionProcess;
+    // 用户编号
     private String userId;
+    // 用户名称
     private String userName;
 
     @Override
@@ -98,8 +105,8 @@ public class PredictionDetailActivity extends AppCompatActivity
 
     private void loadDataAndPredict() 
     {
-        // 获取历史数据
-        List<UserData> historicalData = dbHelper.getUserLastNDaysData(userId,7);
+        // 获取30天的历史数据用于预测
+        List<UserData> historicalData = dbHelper.getUserLastNDaysData(userId,30);
         if (historicalData.isEmpty()) 
         {
             tvPredictionProcess.setText("没有找到历史数据");
@@ -223,5 +230,31 @@ public class PredictionDetailActivity extends AppCompatActivity
         
         sb.append(String.format("%s预测值: %.2f\n", phase, value));
         sb.append(String.format("预测区间: [%.2f, %.2f]\n\n", lower, upper));
+    }
+
+    // 验证日期格式
+    private boolean isValidDateFormat(String date)
+    {
+        String regex = "\\d{4}-\\d{2}-\\d{2}";
+        if (!date.matches(regex))
+        {
+            return false;
+        }
+        
+        try
+        {
+            String[] parts = date.split("-");
+            int year = Integer.parseInt(parts[0]);
+            int month = Integer.parseInt(parts[1]);
+            int day = Integer.parseInt(parts[2]);
+            
+            return year >= 2000 && year <= 2100 
+                && month >= 1 && month <= 12 
+                && day >= 1 && day <= 31;
+        }
+        catch (Exception e)
+        {
+            return false;
+        }
     }
 }

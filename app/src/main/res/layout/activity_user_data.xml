@@ -36,17 +36,18 @@
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
 
             <EditText
-                android:id="@+id/tvDate"
+                android:id="@+id/etDate"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:gravity="center"
-                android:textSize="18sp"
+                android:textSize="14sp"
                 android:hint="输入日期 (yyyy-MM-dd)"
                 android:inputType="date"
-                android:imeOptions="actionDone"
                 android:maxLines="1"
-                android:singleLine="true"/>
+                android:singleLine="true"
+                android:background="@null"
+                android:layout_marginHorizontal="8dp"/>
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnNextDay"
@@ -81,18 +82,14 @@
 
             <EditText
                 android:id="@+id/etSearch"
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
                 android:hint="输入用户编号搜索"
                 android:inputType="text"
-                android:maxLines="1"/>
-
-            <Button
-                android:id="@+id/btnSearch"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="搜索"/>
+                android:maxLines="1"
+                android:singleLine="true"
+                android:background="@null"
+                android:padding="8dp"/>
         </LinearLayout>
 
         <androidx.recyclerview.widget.RecyclerView

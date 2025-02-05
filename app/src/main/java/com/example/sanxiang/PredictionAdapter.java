@@ -84,6 +84,12 @@ public class PredictionAdapter extends RecyclerView.Adapter<PredictionAdapter.Vi
             Intent intent = new Intent(v.getContext(), PredictionDetailActivity.class);
             intent.putExtra("userId", prediction.getUserId());
             intent.putExtra("userName", prediction.getUserName());
+            intent.putExtra("routeNumber", prediction.getRouteNumber());
+            intent.putExtra("routeName", prediction.getRouteName());
+            intent.putExtra("phase", prediction.getPhase());
+            intent.putExtra("predictedPhaseAPower", prediction.getPredictedPhaseAPower());
+            intent.putExtra("predictedPhaseBPower", prediction.getPredictedPhaseBPower());
+            intent.putExtra("predictedPhaseCPower", prediction.getPredictedPhaseCPower());
             v.getContext().startActivity(intent);
         });
     }
