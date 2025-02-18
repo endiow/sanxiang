@@ -1,4 +1,4 @@
-package com.example.sanxiang;
+package com.example.sanxiang.phasebalance.adapter;
 
 import android.view.LayoutInflater;
 import android.view.View;
@@ -6,7 +6,8 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
-import com.example.sanxiang.algorithm.User;
+import com.example.sanxiang.R;
+import com.example.sanxiang.phasebalance.model.User;
 import java.util.List;
 
 public class BranchUserListAdapter extends RecyclerView.Adapter<BranchUserListAdapter.ViewHolder> 

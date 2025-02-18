@@ -1,4 +1,4 @@
-package com.example.sanxiang;
+package com.example.sanxiang.prediction;
 
 import android.graphics.Color;
 import android.os.Bundle;
@@ -9,8 +9,12 @@ import android.widget.ScrollView;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.example.sanxiang.data.UserData;
+import com.example.sanxiang.R;
+import com.example.sanxiang.userdata.model.UserData;
+import com.example.sanxiang.prediction.model.PredictionResult;
 import com.example.sanxiang.db.DatabaseHelper;
+import com.chaquo.python.PyObject;
+import com.chaquo.python.Python;
 import com.github.mikephil.charting.charts.LineChart;
 import com.github.mikephil.charting.components.XAxis;
 import com.github.mikephil.charting.components.YAxis;
@@ -22,7 +26,9 @@ import com.github.mikephil.charting.listener.OnChartValueSelectedListener;
 import com.github.mikephil.charting.highlight.Highlight;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 

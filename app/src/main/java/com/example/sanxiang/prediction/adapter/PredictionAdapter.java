@@ -1,4 +1,4 @@
-package com.example.sanxiang;
+package com.example.sanxiang.prediction.adapter;
 
 import android.content.Intent;
 import android.view.LayoutInflater;
@@ -9,7 +9,9 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.example.sanxiang.data.PredictionResult;
+import com.example.sanxiang.R;
+import com.example.sanxiang.prediction.PredictionDetailActivity;
+import com.example.sanxiang.prediction.model.PredictionResult;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -1,4 +1,4 @@
-package com.example.sanxiang;
+package com.example.sanxiang.phasebalance;
 
 import android.content.Intent;
 import android.os.Bundle;
@@ -12,8 +12,11 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.example.sanxiang.algorithm.*;
-import com.example.sanxiang.data.UserData;
+import com.example.sanxiang.R;
+import com.example.sanxiang.phasebalance.adapter.BranchGroupAdapter;
+import com.example.sanxiang.phasebalance.algorithm.*;
+import com.example.sanxiang.phasebalance.model.*;
+import com.example.sanxiang.userdata.model.UserData;
 import com.example.sanxiang.db.DatabaseHelper;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 

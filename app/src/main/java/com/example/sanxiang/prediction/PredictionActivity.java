@@ -1,4 +1,4 @@
-package com.example.sanxiang;
+package com.example.sanxiang.prediction;
 
 import android.graphics.Color;
 import android.os.Bundle;
@@ -17,8 +17,10 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.example.sanxiang.data.PredictionResult;
-import com.example.sanxiang.data.UserData;
+import com.example.sanxiang.R;
+import com.example.sanxiang.prediction.adapter.PredictionAdapter;
+import com.example.sanxiang.prediction.model.PredictionResult;
+import com.example.sanxiang.userdata.model.UserData;
 import com.example.sanxiang.db.DatabaseHelper;
 import com.example.sanxiang.util.UnbalanceCalculator;
 import com.chaquo.python.PyObject;

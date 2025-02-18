@@ -1,4 +1,4 @@
-package com.example.sanxiang;
+package com.example.sanxiang.userdata;
 
 import android.os.Bundle;
 import android.widget.TextView;
@@ -14,8 +14,10 @@ import android.text.TextWatcher;
 import android.widget.EditText;
 import android.content.Intent;
 
+import com.example.sanxiang.R;
 import com.example.sanxiang.db.DatabaseHelper;
 import com.example.sanxiang.util.DateValidator;
+
 import java.util.ArrayList;
 import java.util.List;
 

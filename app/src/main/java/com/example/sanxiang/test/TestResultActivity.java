@@ -1,4 +1,4 @@
-package com.example.sanxiang;
+package com.example.sanxiang.test;
 
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -12,6 +12,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.chaquo.python.PyObject;
 import com.chaquo.python.Python;
+import com.example.sanxiang.R;
 
 import org.json.JSONArray;
 import org.json.JSONObject;

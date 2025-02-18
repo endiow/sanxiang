@@ -1,4 +1,4 @@
-package com.example.sanxiang.algorithm;
+package com.example.sanxiang.phasebalance.model;
 
 public class BranchGroup 
 {

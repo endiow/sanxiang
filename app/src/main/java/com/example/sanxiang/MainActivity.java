@@ -7,6 +7,7 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
 import android.widget.TextView;
@@ -14,6 +15,7 @@ import android.widget.TextView;
 import androidx.activity.EdgeToEdge;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -21,8 +23,15 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
-import com.example.sanxiang.data.UserData;
+import com.chaquo.python.android.AndroidPlatform;
+import com.example.sanxiang.test.TestResultActivity;
+import com.example.sanxiang.userdata.UserDataActivity;
+import com.example.sanxiang.prediction.PredictionActivity;
+import com.example.sanxiang.phasebalance.PhaseBalanceActivity;
 import com.example.sanxiang.db.DatabaseHelper;
+import com.example.sanxiang.userdata.model.UserData;
+import com.chaquo.python.PyObject;
+import com.chaquo.python.Python;
 import com.github.mikephil.charting.charts.LineChart;
 import com.github.mikephil.charting.components.XAxis;
 import com.github.mikephil.charting.components.YAxis;
@@ -30,17 +39,18 @@ import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter;
-import com.chaquo.python.Python;
-import com.chaquo.python.android.AndroidPlatform;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity
 {
@@ -464,7 +474,7 @@ public class MainActivity extends AppCompatActivity
     private void handleClearData()
     {
         // 弹出确认对话框
-        new androidx.appcompat.app.AlertDialog.Builder(this)
+        new AlertDialog.Builder(this)
             .setTitle("确认删除")
             .setMessage("确定要删除所有数据吗？此操作不可恢复！")
             .setPositiveButton("确定", (dialog, which) -> 

@@ -25,21 +25,21 @@
             </intent-filter>
         </activity>
         <activity
-            android:name=".TestResultActivity" />
+            android:name=".test.TestResultActivity" />
         <activity
-            android:name=".UserDataActivity"
+            android:name=".userdata.UserDataActivity"
             android:exported="false"/>
-        <activity android:name=".PredictionActivity" />
-        <activity android:name=".PredictionDetailActivity" />
-        <activity android:name=".TableViewActivity" />
-        <activity android:name=".UserDetailActivity" />
+        <activity android:name=".prediction.PredictionActivity" />
+        <activity android:name=".prediction.PredictionDetailActivity" />
+        <activity android:name=".userdata.TableViewActivity" />
+        <activity android:name=".userdata.UserDetailActivity" />
         <activity
-            android:name=".PhaseBalanceActivity"
+            android:name=".phasebalance.PhaseBalanceActivity"
             android:label="相位调整"
             android:exported="false">
         </activity>
         <activity
-            android:name=".BranchUsersActivity"
+            android:name=".phasebalance.BranchUsersActivity"
             android:label="支线用户"
             android:exported="false">
         </activity>

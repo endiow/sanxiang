@@ -1,4 +1,4 @@
-package com.example.sanxiang;
+package com.example.sanxiang.userdata.adapter;
 
 import android.view.LayoutInflater;
 import android.view.View;
@@ -8,7 +8,8 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.example.sanxiang.data.UserData;
+import com.example.sanxiang.userdata.model.UserData;
+import com.example.sanxiang.R;
 
 import java.util.ArrayList;
 import java.util.List;

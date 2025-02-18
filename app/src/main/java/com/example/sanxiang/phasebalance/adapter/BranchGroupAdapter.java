@@ -1,4 +1,4 @@
-package com.example.sanxiang;
+package com.example.sanxiang.phasebalance.adapter;
 
 import android.content.Intent;
 import android.view.LayoutInflater;
@@ -7,8 +7,9 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
-import com.example.sanxiang.algorithm.BranchGroup;
-import com.example.sanxiang.algorithm.User;
+import com.example.sanxiang.R;
+import com.example.sanxiang.phasebalance.model.BranchGroup;
+import com.example.sanxiang.phasebalance.model.User;
 import com.example.sanxiang.db.DatabaseHelper;
 import java.util.List;
 

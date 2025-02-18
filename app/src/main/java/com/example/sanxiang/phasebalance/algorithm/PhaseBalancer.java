@@ -1,6 +1,8 @@
-package com.example.sanxiang.algorithm;
+package com.example.sanxiang.phasebalance.algorithm;
 
 import com.example.sanxiang.util.UnbalanceCalculator;
+import com.example.sanxiang.phasebalance.model.User;
+import com.example.sanxiang.phasebalance.model.BranchGroup;
 import java.util.*;
 
 public class PhaseBalancer 

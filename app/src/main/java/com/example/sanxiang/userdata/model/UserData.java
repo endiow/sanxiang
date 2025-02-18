@@ -1,4 +1,4 @@
-package com.example.sanxiang.data;
+package com.example.sanxiang.userdata.model;
 
 public class UserData
 {

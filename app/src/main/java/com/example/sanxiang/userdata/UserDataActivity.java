@@ -1,4 +1,4 @@
-package com.example.sanxiang;
+package com.example.sanxiang.userdata;
 
 import android.content.Intent;
 import android.graphics.Color;
@@ -19,7 +19,9 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.example.sanxiang.data.UserData;
+import com.example.sanxiang.R;
+import com.example.sanxiang.userdata.model.UserData;
+import com.example.sanxiang.userdata.adapter.UserDataAdapter;
 import com.example.sanxiang.db.DatabaseHelper;
 import com.example.sanxiang.util.UnbalanceCalculator;
 import com.example.sanxiang.util.DateValidator;

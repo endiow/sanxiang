@@ -1,4 +1,4 @@
-package com.example.sanxiang;
+package com.example.sanxiang.userdata;
 
 import android.graphics.Color;
 import android.os.Bundle;
@@ -6,13 +6,15 @@ import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
-import com.example.sanxiang.data.UserData;
+
+import com.example.sanxiang.R;
+import com.example.sanxiang.userdata.model.UserData;
 import com.example.sanxiang.db.DatabaseHelper;
 import com.example.sanxiang.util.DateValidator;
+
 import com.github.mikephil.charting.charts.LineChart;
 import com.github.mikephil.charting.components.XAxis;
 import com.github.mikephil.charting.components.YAxis;
-
 import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;

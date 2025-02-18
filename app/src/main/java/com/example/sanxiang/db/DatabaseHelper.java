@@ -5,9 +5,9 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
-import com.example.sanxiang.algorithm.User;
-import com.example.sanxiang.algorithm.BranchGroup;
-import com.example.sanxiang.data.UserData;
+import com.example.sanxiang.userdata.model.UserData;
+import com.example.sanxiang.phasebalance.model.User;
+import com.example.sanxiang.phasebalance.model.BranchGroup;
 import com.example.sanxiang.util.UnbalanceCalculator;
 import android.content.ContentValues;
 
