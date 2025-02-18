@@ -1,5 +1,6 @@
 package com.example.sanxiang;
 
+import android.content.Intent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -7,15 +8,24 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 import com.example.sanxiang.algorithm.BranchGroup;
+import com.example.sanxiang.algorithm.User;
+import com.example.sanxiang.db.DatabaseHelper;
 import java.util.List;
 
 public class BranchGroupAdapter extends RecyclerView.Adapter<BranchGroupAdapter.ViewHolder> 
 {
     private List<BranchGroup> branchGroups;
+    private OnBranchGroupClickListener listener;
     
-    public BranchGroupAdapter(List<BranchGroup> branchGroups) 
+    public interface OnBranchGroupClickListener 
+    {
+        void onBranchGroupClick(BranchGroup group);
+    }
+    
+    public BranchGroupAdapter(List<BranchGroup> branchGroups, OnBranchGroupClickListener listener) 
     {
         this.branchGroups = branchGroups;
+        this.listener = listener;
     }
     
     @NonNull
@@ -31,7 +41,18 @@ public class BranchGroupAdapter extends RecyclerView.Adapter<BranchGroupAdapter.
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) 
     {
         BranchGroup group = branchGroups.get(position);
-        holder.tvBranchGroup.setText(group.toString());
+        // 获取用户数量
+        DatabaseHelper dbHelper = new DatabaseHelper(holder.itemView.getContext());
+        List<User> users = dbHelper.getUsersByRouteBranch(group.getRouteNumber(), group.getBranchNumber());
+        
+        holder.tvBranchGroup.setText(String.format("回路%s支线%s（%d个用户）", 
+            group.getRouteNumber(), group.getBranchNumber(), users.size()));
+            
+        holder.itemView.setOnClickListener(v -> {
+            if (listener != null) {
+                listener.onBranchGroupClick(group);
+            }
+        });
     }
     
     @Override

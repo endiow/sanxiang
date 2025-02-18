@@ -38,6 +38,11 @@
             android:label="相位调整"
             android:exported="false">
         </activity>
+        <activity
+            android:name=".BranchUsersActivity"
+            android:label="支线用户"
+            android:exported="false">
+        </activity>
     </application>
 
 </manifest>

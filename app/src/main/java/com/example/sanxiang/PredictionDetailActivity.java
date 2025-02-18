@@ -346,11 +346,7 @@ public class PredictionDetailActivity extends AppCompatActivity
         process.append(String.format("   - 标准差：%.2f\n", variance));
         process.append(String.format("   - 变异系数：%.2f%%\n", variationCoef));
         process.append("   - 置信水平：95%\n");
-        process.append("   - 可信度评估：").append(getReliabilityLevel(variationCoef)).append("\n\n");
-        
-        // 6. 建议
-        process.append("6. 预测建议：\n");
-        appendRecommendations(process, variationCoef, statsA[0], statsB[0], statsC[0]);
+        process.append("   - 可信度评估：").append(getReliabilityLevel(variationCoef)).append("\n");
         
         // 创建带滚动条的文本视图
         ScrollView scrollView = new ScrollView(this);
@@ -410,42 +406,6 @@ public class PredictionDetailActivity extends AppCompatActivity
         else
         {
             return "较低（变异系数≥30%）";
-        }
-    }
-
-    // 添加建议
-    private void appendRecommendations(StringBuilder process, double variationCoef,
-                                     double meanA, double meanB, double meanC)
-    {
-        // 基于变异系数的建议
-        if (variationCoef >= 30)
-        {
-            process.append("   - 预测波动较大，建议：\n");
-            process.append("     * 密切关注实际用电情况\n");
-            process.append("     * 考虑增加检测频率\n");
-            process.append("     * 分析用电模式变化原因\n");
-        }
-        
-        // 基于相位均值对比的建议
-        double maxMean = Math.max(Math.max(meanA, meanB), meanC);
-        double minMean = Math.min(Math.min(meanA, meanB), meanC);
-        if ((maxMean - minMean) / maxMean > 0.2)
-        {
-            process.append("   - 三相负载不平衡，建议：\n");
-            process.append("     * 检查负载分布\n");
-            process.append("     * 考虑进行相位调整\n");
-            process.append("     * 评估设备运行状况\n");
-        }
-        
-        // 基于预测值与历史均值对比的建议
-        if (Math.abs(predictedPhaseA - meanA) / meanA > 0.2 ||
-            Math.abs(predictedPhaseB - meanB) / meanB > 0.2 ||
-            Math.abs(predictedPhaseC - meanC) / meanC > 0.2)
-        {
-            process.append("   - 预测值与历史均值差异较大，建议：\n");
-            process.append("     * 分析用电模式变化\n");
-            process.append("     * 检查是否有新增用电设备\n");
-            process.append("     * 评估是否存在异常用电情况\n");
         }
     }
 

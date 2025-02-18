@@ -19,6 +19,16 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:hint="支线编号"
-        android:inputType="text"/>
+        android:inputType="text"
+        android:layout_marginBottom="8dp"/>
+
+    <TextView
+        android:id="@+id/tvUserCount"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:textColor="#666666"
+        android:visibility="gone"
+        android:layout_marginTop="8dp"/>
 
 </LinearLayout> 

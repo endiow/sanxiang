@@ -1,6 +1,9 @@
 package com.example.sanxiang;
 
+import android.content.Intent;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.Log;
 import android.view.View;
 import android.widget.*;
@@ -44,7 +47,14 @@ public class PhaseBalanceActivity extends AppCompatActivity
         btnOptimize = findViewById(R.id.btnOptimize);
         tvResult = findViewById(R.id.tvResult);
         
-        adapter = new BranchGroupAdapter(branchGroups);
+        adapter = new BranchGroupAdapter(branchGroups, group -> {
+            // 处理支线组点击事件
+            Intent intent = new Intent(this, BranchUsersActivity.class);
+            intent.putExtra(BranchUsersActivity.EXTRA_ROUTE_NUMBER, group.getRouteNumber());
+            intent.putExtra(BranchUsersActivity.EXTRA_BRANCH_NUMBER, group.getBranchNumber());
+            startActivity(intent);
+        });
+        
         rvBranchGroups.setLayoutManager(new LinearLayoutManager(this));
         rvBranchGroups.setAdapter(adapter);
         
@@ -64,6 +74,40 @@ public class PhaseBalanceActivity extends AppCompatActivity
         
         EditText etRouteNumber = dialogView.findViewById(R.id.etRouteNumber);
         EditText etBranchNumber = dialogView.findViewById(R.id.etBranchNumber);
+        TextView tvUserCount = dialogView.findViewById(R.id.tvUserCount);
+        
+        // 添加文本变化监听器
+        TextWatcher textWatcher = new TextWatcher() 
+        {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+            @Override
+            public void afterTextChanged(Editable s) 
+            {
+                String routeNumber = etRouteNumber.getText().toString();
+                String branchNumber = etBranchNumber.getText().toString();
+                
+                if (!routeNumber.isEmpty() && !branchNumber.isEmpty()) 
+                {
+                    // 获取用户数量
+                    List<User> users = dbHelper.getUsersByRouteBranch(routeNumber, branchNumber);
+                    int userCount = users.size();
+                    tvUserCount.setText(String.format("该支线用户数量：%d", userCount));
+                    tvUserCount.setVisibility(View.VISIBLE);
+                } 
+                else 
+                {
+                    tvUserCount.setVisibility(View.GONE);
+                }
+            }
+        };
+        
+        etRouteNumber.addTextChangedListener(textWatcher);
+        etBranchNumber.addTextChangedListener(textWatcher);
         
         builder.setView(dialogView)
                .setTitle("添加支线组")
@@ -74,37 +118,40 @@ public class PhaseBalanceActivity extends AppCompatActivity
                    
                    if (!routeNumber.isEmpty() && !branchNumber.isEmpty()) 
                    {
+                       // 检查支线组是否已存在
+                       boolean exists = false;
+                       for (BranchGroup group : branchGroups) 
+                       {
+                           if (group.getRouteNumber().equals(routeNumber) && 
+                               group.getBranchNumber().equals(branchNumber)) 
+                           {
+                               exists = true;
+                               break;
+                           }
+                       }
+                       
+                       if (exists) 
+                       {
+                           Toast.makeText(this, "该支线组已存在", Toast.LENGTH_SHORT).show();
+                           return;
+                       }
+                       
+                       // 检查数据库中是否有该支线的用户数据
+                       List<User> users = dbHelper.getUsersByRouteBranch(routeNumber, branchNumber);
+                       if (users.isEmpty()) 
+                       {
+                           Toast.makeText(this, "未找到该支线的用户数据", Toast.LENGTH_SHORT).show();
+                           return;
+                       }
+                       
+                       // 添加支线组
                        BranchGroup group = new BranchGroup(routeNumber, branchNumber);
                        branchGroups.add(group);
                        adapter.notifyDataSetChanged();
-                       
-                       // 显示用户选择对话框
-                       showUserSelectionDialog(group);
+                       Toast.makeText(this, String.format("支线组添加成功，包含%d个用户", users.size()), Toast.LENGTH_SHORT).show();
                    }
                })
                .setNegativeButton("取消", null)
-               .show();
-    }
-    
-    private void showUserSelectionDialog(BranchGroup group) 
-    {
-        // 获取该回路支线的所有用户
-        List<User> users = getUsersByRouteBranch(group.getRouteNumber(), group.getBranchNumber());
-        String[] userNames = users.stream()
-                                .map(user -> user.getUserName() + "(" + user.getUserId() + ")")
-                                .toArray(String[]::new);
-        boolean[] checkedItems = new boolean[userNames.length];
-        
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("选择用户")
-               .setMultiChoiceItems(userNames, checkedItems, (dialog, which, isChecked) -> 
-               {
-                   if (isChecked) 
-                   {
-                       group.addUser(users.get(which).getUserId());
-                   }
-               })
-               .setPositiveButton("确定", (dialog, which) -> adapter.notifyDataSetChanged())
                .show();
     }
     
@@ -241,6 +288,11 @@ public class PhaseBalanceActivity extends AppCompatActivity
             // 计算每相总电量
             double[] phasePowers = new double[3];
             int changedUsers = 0;
+            int changedPowerUsers = 0;  // 记录改变的动力相用户数
+            
+            // 分类存储用户变化信息
+            List<String> normalChanges = new ArrayList<>();    // 普通用户变化
+            List<String> powerChanges = new ArrayList<>();     // 动力相用户变化
             
             for (int i = 0; i < users.size(); i++) 
             {
@@ -255,13 +307,43 @@ public class PhaseBalanceActivity extends AppCompatActivity
                 if (newPhase != user.getCurrentPhase()) 
                 {
                     changedUsers++;
-                    result.append(String.format("%s: %d -> %d\n", 
-                        user.getUserName(), user.getCurrentPhase(), newPhase));
+                    
+                    // 构建详细的变化信息
+                    String changeInfo = String.format(
+                        "用户ID：%s\n" +
+                        "用户名称：%s\n" +
+                        "回路-支线：%s-%s\n" +
+                        "原相位：%d，新相位：%d\n" +
+                        "用户功率：%.2f\n",
+                        user.getUserId(),
+                        user.getUserName(),
+                        user.getRouteNumber(),
+                        user.getBranchNumber(),
+                        user.getCurrentPhase(),
+                        newPhase,
+                        user.getPower()
+                    );
+                    
+                    if (user.isPowerPhase()) 
+                    {
+                        changedPowerUsers++;
+                        powerChanges.add(changeInfo);
+                    } 
+                    else 
+                    {
+                        normalChanges.add(changeInfo);
+                    }
                 }
             }
             
-            result.append(String.format("\n调整用户数：%d\n", changedUsers));
-            result.append(String.format("优化后三相电量：\nA相：%.2f\nB相：%.2f\nC相：%.2f\n",
+            // 显示总体统计信息
+            result.append(String.format("总调整用户数：%d（其中动力相用户：%d）\n\n", 
+                changedUsers, changedPowerUsers));
+            
+            result.append(String.format("优化后三相电量：\n" +
+                "A相：%.2f\n" +
+                "B相：%.2f\n" +
+                "C相：%.2f\n\n",
                 phasePowers[0], phasePowers[1], phasePowers[2]));
             
             double maxPower = Math.max(Math.max(phasePowers[0], phasePowers[1]), phasePowers[2]);
@@ -270,11 +352,34 @@ public class PhaseBalanceActivity extends AppCompatActivity
             if (maxPower > 0) 
             {
                 double unbalanceRate = ((maxPower - minPower) / maxPower) * 100;
-                result.append(String.format("三相不平衡度：%.2f%%", unbalanceRate));
+                result.append(String.format("三相不平衡度：%.2f%%\n\n", unbalanceRate));
             } 
             else 
             {
-                result.append("三相不平衡度：0.00%");
+                result.append("三相不平衡度：0.00%\n\n");
+            }
+            
+            // 显示动力相用户变化
+            if (!powerChanges.isEmpty()) 
+            {
+                result.append("动力相用户调整明细：\n");
+                result.append("----------------------------------------\n");
+                for (String change : powerChanges) 
+                {
+                    result.append(change).append("----------------------------------------\n");
+                }
+                result.append("\n");
+            }
+            
+            // 显示普通用户变化
+            if (!normalChanges.isEmpty()) 
+            {
+                result.append("普通用户调整明细：\n");
+                result.append("----------------------------------------\n");
+                for (String change : normalChanges) 
+                {
+                    result.append(change).append("----------------------------------------\n");
+                }
             }
             
             tvResult.setText(result.toString());

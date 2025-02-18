@@ -6,6 +6,7 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
 import com.example.sanxiang.algorithm.User;
+import com.example.sanxiang.algorithm.BranchGroup;
 import com.example.sanxiang.data.UserData;
 import com.example.sanxiang.util.UnbalanceCalculator;
 import android.content.ContentValues;
@@ -25,6 +26,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
     private static final String TABLE_TOTAL_POWER = "total_power";  // 总电量表
     private static final String TABLE_PREDICTION = "prediction";  // 预测结果表
     private static final String TABLE_LAST_MODIFIED = "last_modified";  // 最后修改时间表
+    private static final String TABLE_BRANCH_GROUP = "branch_group";  // 支线组表
     private final Context context;
 
     // 列名常量
@@ -87,6 +89,14 @@ public class DatabaseHelper extends SQLiteOpenHelper
     private static final String CREATE_LAST_MODIFIED_TABLE = 
             "CREATE TABLE " + TABLE_LAST_MODIFIED + " (" + COLUMN_MODIFIED_TIME + " TEXT)";
 
+    // 创建支线组表的SQL语句
+    private static final String CREATE_BRANCH_GROUP_TABLE = 
+            "CREATE TABLE " + TABLE_BRANCH_GROUP + " (" +
+            COLUMN_ROUTE_NUMBER + " TEXT, " +
+            COLUMN_BRANCH_NUMBER + " TEXT, " +
+            "PRIMARY KEY (" + COLUMN_ROUTE_NUMBER + ", " + COLUMN_BRANCH_NUMBER + "))";
+
+
     public DatabaseHelper(Context context)
     {
         super(context, DATABASE_NAME, null, DATABASE_VERSION);
@@ -102,6 +112,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
             db.execSQL(CREATE_TOTAL_POWER_TABLE);
             db.execSQL(CREATE_PREDICTION_TABLE);
             db.execSQL(CREATE_LAST_MODIFIED_TABLE);
+            db.execSQL(CREATE_BRANCH_GROUP_TABLE);
             
             // 初始化最后修改时间
             ContentValues values = new ContentValues();
@@ -249,6 +260,251 @@ public class DatabaseHelper extends SQLiteOpenHelper
             e.printStackTrace();
         }
         return null;
+    }
+
+    //-----------------------------------支线组表函数-----------------------------------
+    // 添加支线组
+    public boolean addBranchGroup(String routeNumber, String branchNumber) 
+    {
+        SQLiteDatabase db = null;
+        Cursor cursor = null;
+        
+        try 
+        {
+            db = this.getWritableDatabase();
+            
+            // 检查是否有用户数据
+            String query = "SELECT COUNT(*) FROM " + TABLE_USER_INFO + 
+                         " WHERE " + COLUMN_ROUTE_NUMBER + " = ? AND " + 
+                         COLUMN_BRANCH_NUMBER + " = ?";
+            
+            cursor = db.rawQuery(query, new String[]{routeNumber, branchNumber});
+            
+            if (cursor.moveToFirst() && cursor.getInt(0) > 0) 
+            {
+                // 如果有用户数据，则添加支线组
+                ContentValues values = new ContentValues();
+                values.put(COLUMN_ROUTE_NUMBER, routeNumber);
+                values.put(COLUMN_BRANCH_NUMBER, branchNumber);
+                
+                long result = db.insertWithOnConflict(
+                    TABLE_BRANCH_GROUP,
+                    null,
+                    values,
+                    SQLiteDatabase.CONFLICT_IGNORE
+                );
+                
+                return result != -1;
+            }
+            
+            return false;  // 没有找到用户数据
+        } 
+        catch (Exception e) 
+        {
+            e.printStackTrace();
+            return false;
+        } 
+        finally 
+        {
+            if (cursor != null) 
+            {
+                cursor.close();
+            }
+            if (db != null) 
+            {
+                db.close();
+            }
+        }
+    }
+    
+    // 删除支线组
+    public boolean deleteBranchGroup(String routeNumber, String branchNumber) 
+    {
+        SQLiteDatabase db = null;
+        try 
+        {
+            db = this.getWritableDatabase();
+            String whereClause = COLUMN_ROUTE_NUMBER + " = ? AND " + 
+                               COLUMN_BRANCH_NUMBER + " = ?";
+            String[] whereArgs = {routeNumber, branchNumber};
+            
+            int result = db.delete(TABLE_BRANCH_GROUP, whereClause, whereArgs);
+            return result > 0;
+        } 
+        catch (Exception e) 
+        {
+            e.printStackTrace();
+            return false;
+        } 
+        finally 
+        {
+            if (db != null) 
+            {
+                db.close();
+            }
+        }
+    }
+
+    // 获取所有支线组
+    public List<BranchGroup> getAllBranchGroups() 
+    {
+        List<BranchGroup> groups = new ArrayList<>();
+        SQLiteDatabase db = null;
+        Cursor cursor = null;
+        
+        try 
+        {
+            db = this.getReadableDatabase();
+            cursor = db.query(
+                TABLE_BRANCH_GROUP,
+                new String[]{COLUMN_ROUTE_NUMBER, COLUMN_BRANCH_NUMBER},
+                null, null, null, null, null
+            );
+            
+            while (cursor.moveToNext()) 
+            {
+                String routeNumber = cursor.getString(
+                    cursor.getColumnIndex(COLUMN_ROUTE_NUMBER)
+                );
+                String branchNumber = cursor.getString(
+                    cursor.getColumnIndex(COLUMN_BRANCH_NUMBER)
+                );
+                
+                groups.add(new BranchGroup(routeNumber, branchNumber));
+            }
+        } 
+        catch (Exception e) 
+        {
+            e.printStackTrace();
+        } 
+        finally 
+        {
+            if (cursor != null) 
+            {
+                cursor.close();
+            }
+            if (db != null) 
+            {
+                db.close();
+            }
+        }
+        
+        return groups;
+    }
+
+    // 检查支线组是否存在
+    public boolean branchGroupExists(String routeNumber, String branchNumber) 
+    {
+        SQLiteDatabase db = null;
+        Cursor cursor = null;
+        try 
+        {
+            db = this.getReadableDatabase();
+            String query = "SELECT COUNT(*) FROM " + TABLE_BRANCH_GROUP + 
+                         " WHERE " + COLUMN_ROUTE_NUMBER + " = ? AND " + 
+                         COLUMN_BRANCH_NUMBER + " = ?";
+            cursor = db.rawQuery(query, new String[]{routeNumber, branchNumber});
+            
+            if (cursor.moveToFirst()) 
+            {
+                return cursor.getInt(0) > 0;
+            }
+            return false;
+        } 
+        catch (Exception e) 
+        {
+            e.printStackTrace();
+            return false;
+        } 
+        finally 
+        {
+            if (cursor != null) 
+            {
+                cursor.close();
+            }
+            if (db != null) 
+            {
+                db.close();
+            }
+        }
+    }
+
+    // 获取支线组的用户列表
+    public List<User> getUsersByRouteBranch(String routeNumber, String branchNumber)
+    {
+        List<User> users = new ArrayList<>();
+        SQLiteDatabase db = null;
+        Cursor cursor = null;
+        
+        try 
+        {
+            db = this.getReadableDatabase();
+            
+            // 获取用户基本信息
+            String query = "SELECT " + COLUMN_USER_ID + ", " + COLUMN_USER_NAME + 
+                         " FROM " + TABLE_USER_INFO + 
+                         " WHERE " + COLUMN_ROUTE_NUMBER + " = ? AND " + 
+                         COLUMN_BRANCH_NUMBER + " = ?";
+            
+            cursor = db.rawQuery(query, new String[]{routeNumber, branchNumber});
+            
+            while (cursor.moveToNext()) 
+            {
+                String userId = cursor.getString(cursor.getColumnIndex(COLUMN_USER_ID));
+                String userName = cursor.getString(cursor.getColumnIndex(COLUMN_USER_NAME));
+                
+                // 获取用户最近一天的数据
+                List<UserData> userDataList = getUserLastNDaysData(userId, 1);
+                if (!userDataList.isEmpty()) 
+                {
+                    UserData userData = userDataList.get(0);
+                    
+                    // 计算总功率
+                    double totalPower = userData.getPhaseAPower() + 
+                                      userData.getPhaseBPower() + 
+                                      userData.getPhaseCPower();
+                    
+                    // 确定当前相位
+                    byte currentPhase = 0;
+                    if (userData.getPhaseAPower() > 0) currentPhase = 1;
+                    else if (userData.getPhaseBPower() > 0) currentPhase = 2;
+                    else if (userData.getPhaseCPower() > 0) currentPhase = 3;
+                    
+                    // 判断是否为动力相
+                    boolean isPowerPhase = userData.getPhaseAPower() > 0 && 
+                                         userData.getPhaseBPower() > 0 && 
+                                         userData.getPhaseCPower() > 0;
+                    
+                    User user = new User(
+                        userId,
+                        userName,
+                        routeNumber,
+                        branchNumber,
+                        totalPower,
+                        currentPhase,
+                        isPowerPhase
+                    );
+                    users.add(user);
+                }
+            }
+        } 
+        catch (Exception e) 
+        {
+            e.printStackTrace();
+        } 
+        finally 
+        {
+            if (cursor != null) 
+            {
+                cursor.close();
+            }
+            if (db != null) 
+            {
+                db.close();
+            }
+        }
+        
+        return users;
     }
 
     //-----------------------------------导入数据函数-----------------------------------
@@ -900,143 +1156,5 @@ public class DatabaseHelper extends SQLiteOpenHelper
         }
         
         return userDataList;
-    }
-
-    // 获取指定回路支线的用户数据
-    public List<User> getUsersByRouteBranch(String routeNumber, String branchNumber)
-    {
-        List<User> users = new ArrayList<>();
-        SQLiteDatabase db = getReadableDatabase();
-        
-        try 
-        {
-            String query = "SELECT u.user_id, u.user_name, u.route_number, " +
-                          "u.branch_number, d.phase_a_power + d.phase_b_power + d.phase_c_power as total_power, " +
-                          "CASE " +
-                          "  WHEN d.phase_a_power > 0 THEN 1 " +
-                          "  WHEN d.phase_b_power > 0 THEN 2 " +
-                          "  WHEN d.phase_c_power > 0 THEN 3 " +
-                          "  ELSE 0 END as current_phase, " +
-                          "CASE WHEN d.phase_a_power > 0 AND d.phase_b_power > 0 AND d.phase_c_power > 0 THEN 1 " +
-                          "  ELSE 0 END as is_power_phase " +
-                          "FROM user_info u " +
-                          "LEFT JOIN user_data_" + getCurrentDate() + " d ON u.user_id = d.user_id " +
-                          "WHERE u.route_number = ? AND u.branch_number = ?";
-                          
-            Cursor cursor = db.rawQuery(query, new String[]{routeNumber, branchNumber});
-            
-            while (cursor.moveToNext()) 
-            {
-                users.add(new User(
-                    cursor.getString(0),  // userId
-                    cursor.getString(1),  // userName
-                    cursor.getString(2),  // routeNumber
-                    cursor.getString(3),  // branchNumber
-                    cursor.getDouble(4),  // power
-                    (byte)cursor.getInt(5),  // currentPhase
-                    cursor.getInt(6) == 1    // isPowerPhase
-                ));
-            }
-            cursor.close();
-        } 
-        catch (Exception e) 
-        {
-            e.printStackTrace();
-        }
-        
-        return users;
-    }
-    
-    // 获取所有用户数据
-    public List<User> getAllUsers() 
-    {
-        List<User> users = new ArrayList<>();
-        SQLiteDatabase db = getReadableDatabase();
-        Cursor cursor = null;
-        
-        try 
-        {
-            // 获取最近的日期
-            String latestDate = getLatestDate();
-            if (latestDate == null) 
-            {
-                Log.e("DatabaseHelper", "没有找到任何用电数据");
-                return users;
-            }
-            
-            Log.d("DatabaseHelper", "正在获取日期 " + latestDate + " 的用户数据");
-
-            // 简化的SQL查询，只获取最近一天的数据
-            String query = "SELECT u.user_id, u.user_name, u.route_number, u.branch_number, " +
-                          "d.phase_a_power, d.phase_b_power, d.phase_c_power, d.phase " +
-                          "FROM user_info u " +
-                          "INNER JOIN user_data d ON u.user_id = d.user_id " +
-                          "WHERE d.date = ? " +
-                          "AND (d.phase_a_power > 0 OR d.phase_b_power > 0 OR d.phase_c_power > 0)";
-                          
-            cursor = db.rawQuery(query, new String[]{latestDate});
-            Log.d("DatabaseHelper", "查询到 " + cursor.getCount() + " 条用户记录");
-            
-            while (cursor.moveToNext()) 
-            {
-                try 
-                {
-                    String userId = cursor.getString(0);
-                    String userName = cursor.getString(1);
-                    String routeNumber = cursor.getString(2);
-                    String branchNumber = cursor.getString(3);
-                    double phaseAPower = cursor.getDouble(4);
-                    double phaseBPower = cursor.getDouble(5);
-                    double phaseCPower = cursor.getDouble(6);
-                    String phase = cursor.getString(7);
-                    
-                    // 计算总功率
-                    double totalPower = phaseAPower + phaseBPower + phaseCPower;
-                    
-                    // 确定当前相位
-                    byte currentPhase = 0;
-                    if (phaseAPower > 0) currentPhase = 1;
-                    else if (phaseBPower > 0) currentPhase = 2;
-                    else if (phaseCPower > 0) currentPhase = 3;
-                    
-                    // 判断是否为动力相（三相都有电量）
-                    boolean isPowerPhase = phaseAPower > 0 && phaseBPower > 0 && phaseCPower > 0;
-
-                    User user = new User(userId, userName, routeNumber, branchNumber, 
-                                       totalPower, currentPhase, isPowerPhase);
-                    users.add(user);
-
-                    Log.d("DatabaseHelper", String.format(
-                        "读取到用户 - ID: %s, 名称: %s, 功率: %.2f, 相位: %d, 是否动力相: %b",
-                        userId, userName, totalPower, currentPhase, isPowerPhase
-                    ));
-                } 
-                catch (Exception e) 
-                {
-                    Log.e("DatabaseHelper", "处理用户数据时出错", e);
-                }
-            }
-        } 
-        catch (Exception e) 
-        {
-            Log.e("DatabaseHelper", "获取用户数据时出错", e);
-            e.printStackTrace();
-        } 
-        finally 
-        {
-            if (cursor != null) 
-            {
-                cursor.close();
-            }
-        }
-        
-        Log.d("DatabaseHelper", "总共返回 " + users.size() + " 个用户");
-        return users;
-    }
-
-    // 获取当前日期
-    private String getCurrentDate() 
-    {
-        return new java.text.SimpleDateFormat("yyyy_MM_dd").format(new java.util.Date());
     }
 } 
