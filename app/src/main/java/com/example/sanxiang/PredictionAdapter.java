@@ -33,17 +33,41 @@ public class PredictionAdapter extends RecyclerView.Adapter<PredictionAdapter.Vi
         notifyDataSetChanged();
     }
 
-    public void filter(String userId)
+    public void filter(String searchId)
     {
-        if (userId == null || userId.trim().isEmpty())
+        if (searchId == null || searchId.trim().isEmpty())
         {
             predictions = new ArrayList<>(allPredictions);
         }
         else
         {
-            predictions = allPredictions.stream()
-                .filter(p -> p.getUserId().contains(userId.trim()))
-                .collect(Collectors.toList());
+            try
+            {
+                String trimmedSearchId = searchId.trim();
+                predictions = allPredictions.stream()
+                    .filter(p -> {
+                        if (p == null || p.getUserId() == null) return false;
+                        String userId = p.getUserId();
+                        // 确保用户ID长度为10位
+                        if (userId.length() != 10) return false;
+                        // 检查每一位是否匹配
+                        for (int i = 0; i < trimmedSearchId.length() && i < 10; i++)
+                        {
+                            if (trimmedSearchId.charAt(i) != '_' && // 使用_表示任意字符
+                                trimmedSearchId.charAt(i) != userId.charAt(i))
+                            {
+                                return false;
+                            }
+                        }
+                        return true;
+                    })
+                    .collect(Collectors.toList());
+            }
+            catch (Exception e)
+            {
+                e.printStackTrace();
+                predictions = new ArrayList<>();
+            }
         }
         notifyDataSetChanged();
     }

@@ -4,6 +4,8 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
+
+import com.example.sanxiang.algorithm.User;
 import com.example.sanxiang.data.UserData;
 import com.example.sanxiang.util.UnbalanceCalculator;
 import android.content.ContentValues;
@@ -13,6 +15,7 @@ import java.util.List;
 import java.util.Collections;
 import java.util.Map;
 import java.util.HashMap;
+import android.util.Log;
 
 public class DatabaseHelper extends SQLiteOpenHelper
 {
@@ -29,7 +32,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
     private static final String COLUMN_USER_ID = "user_id";
     private static final String COLUMN_USER_NAME = "user_name";
     private static final String COLUMN_ROUTE_NUMBER = "route_number";
-    private static final String COLUMN_ROUTE_NAME = "route_name";
+    private static final String COLUMN_BRANCH_NUMBER = "branch_number";  // 支线编号，0表示主干线，其他表示支线编号
     private static final String COLUMN_PHASE = "phase";
     private static final String COLUMN_PHASE_A_POWER = "phase_a_power";
     private static final String COLUMN_PHASE_B_POWER = "phase_b_power";
@@ -49,7 +52,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
             COLUMN_USER_ID + " TEXT PRIMARY KEY, " +  // 用户编号作为主键
             COLUMN_USER_NAME + " TEXT, " +
             COLUMN_ROUTE_NUMBER + " TEXT, " +
-            COLUMN_ROUTE_NAME + " TEXT)";
+            COLUMN_BRANCH_NUMBER + " TEXT)";  // 支线编号
 
     // 创建用户数据表的SQL模板
     private static final String CREATE_USER_DATA_TABLE_TEMPLATE = 
@@ -307,7 +310,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
         userInfo.put(COLUMN_USER_ID, userId);
         userInfo.put(COLUMN_USER_NAME, userData.getUserName());
         userInfo.put(COLUMN_ROUTE_NUMBER, userData.getRouteNumber());
-        userInfo.put(COLUMN_ROUTE_NAME, userData.getRouteName());
+        userInfo.put(COLUMN_BRANCH_NUMBER, userData.getBranchNumber());  // 支线编号
         
         db.insertWithOnConflict(TABLE_USER_INFO, null, userInfo, SQLiteDatabase.CONFLICT_REPLACE);
     }
@@ -647,9 +650,15 @@ public class DatabaseHelper extends SQLiteOpenHelper
                     
                     if (userCursor != null && userCursor.moveToFirst())
                     {
-                        String userName = userCursor.getString(userCursor.getColumnIndex(COLUMN_USER_NAME));
-                        String routeNumber = userCursor.getString(userCursor.getColumnIndex(COLUMN_ROUTE_NUMBER));
-                        String routeName = userCursor.getString(userCursor.getColumnIndex(COLUMN_ROUTE_NAME));
+                        // 先获取列索引
+                        int userNameIndex = userCursor.getColumnIndexOrThrow(COLUMN_USER_NAME);
+                        int routeNumberIndex = userCursor.getColumnIndexOrThrow(COLUMN_ROUTE_NUMBER);
+                        int branchNumberIndex = userCursor.getColumnIndexOrThrow(COLUMN_BRANCH_NUMBER);
+                            
+                        // 使用获取到的索引
+                        String userName = userCursor.getString(userNameIndex);
+                        String routeNumber = userCursor.getString(routeNumberIndex);
+                        String branchNumber = userCursor.getString(branchNumberIndex);
                         
                         // 检查用户数据表是否存在
                         String userDataTable = "user_data_" + userId;
@@ -674,7 +683,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
                                 userData.setUserId(userId);
                                 userData.setUserName(userName);
                                 userData.setRouteNumber(routeNumber);
-                                userData.setRouteName(routeName);
+                                userData.setBranchNumber(branchNumber);
                                 
                                 int phaseIndex = dataCursor.getColumnIndex(COLUMN_PHASE);
                                 int phaseAPowerIndex = dataCursor.getColumnIndex(COLUMN_PHASE_A_POWER);
@@ -789,13 +798,13 @@ public class DatabaseHelper extends SQLiteOpenHelper
         {
             int userNameIndex = cursor.getColumnIndex(COLUMN_USER_NAME);
             int routeNumberIndex = cursor.getColumnIndex(COLUMN_ROUTE_NUMBER);
-            int routeNameIndex = cursor.getColumnIndex(COLUMN_ROUTE_NAME);
+            int branchNumberIndex = cursor.getColumnIndex(COLUMN_BRANCH_NUMBER);
             
-            if (userNameIndex >= 0 && routeNumberIndex >= 0 && routeNameIndex >= 0)
+            if (userNameIndex >= 0 && routeNumberIndex >= 0 && branchNumberIndex >= 0)
             {
                 String userName = cursor.getString(userNameIndex);
                 String routeNumber = cursor.getString(routeNumberIndex);
-                String routeName = cursor.getString(routeNameIndex);
+                String branchNumber = cursor.getString(branchNumberIndex);
                 
                 cursor.close();
                 return String.format(
@@ -803,7 +812,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
                     "用户名称：%s\n" +
                     "回路编号：%s\n" +
                     "线路名称：%s",
-                    userId, userName, routeNumber, routeName
+                    userId, userName, routeNumber, branchNumber
                 );
             }
         }
@@ -828,10 +837,15 @@ public class DatabaseHelper extends SQLiteOpenHelper
             
             if (userCursor != null && userCursor.moveToFirst())
             {
-                // 获取用户基本信息
-                String userName = userCursor.getString(userCursor.getColumnIndex(COLUMN_USER_NAME));
-                String routeNumber = userCursor.getString(userCursor.getColumnIndex(COLUMN_ROUTE_NUMBER));
-                String routeName = userCursor.getString(userCursor.getColumnIndex(COLUMN_ROUTE_NAME));
+                // 先获取列索引
+                int userNameIndex = userCursor.getColumnIndexOrThrow(COLUMN_USER_NAME);
+                int routeNumberIndex = userCursor.getColumnIndexOrThrow(COLUMN_ROUTE_NUMBER);
+                int branchNumberIndex = userCursor.getColumnIndexOrThrow(COLUMN_BRANCH_NUMBER);
+
+                // 使用获取到的索引
+                String userName = userCursor.getString(userNameIndex);
+                String routeNumber = userCursor.getString(routeNumberIndex);
+                String branchNumber = userCursor.getString(branchNumberIndex);
                 userCursor.close();
                 
                 // 获取用户电量数据
@@ -863,7 +877,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
                             userData.setUserId(userId);
                             userData.setUserName(userName);
                             userData.setRouteNumber(routeNumber);
-                            userData.setRouteName(routeName);
+                            userData.setBranchNumber(branchNumber);
                             userData.setPhase(dataCursor.getString(phaseIndex));
                             userData.setPhaseAPower(dataCursor.getDouble(phaseAPowerIndex));
                             userData.setPhaseBPower(dataCursor.getDouble(phaseBPowerIndex));
@@ -888,5 +902,141 @@ public class DatabaseHelper extends SQLiteOpenHelper
         return userDataList;
     }
 
+    // 获取指定回路支线的用户数据
+    public List<User> getUsersByRouteBranch(String routeNumber, String branchNumber)
+    {
+        List<User> users = new ArrayList<>();
+        SQLiteDatabase db = getReadableDatabase();
+        
+        try 
+        {
+            String query = "SELECT u.user_id, u.user_name, u.route_number, " +
+                          "u.branch_number, d.phase_a_power + d.phase_b_power + d.phase_c_power as total_power, " +
+                          "CASE " +
+                          "  WHEN d.phase_a_power > 0 THEN 1 " +
+                          "  WHEN d.phase_b_power > 0 THEN 2 " +
+                          "  WHEN d.phase_c_power > 0 THEN 3 " +
+                          "  ELSE 0 END as current_phase, " +
+                          "CASE WHEN d.phase_a_power > 0 AND d.phase_b_power > 0 AND d.phase_c_power > 0 THEN 1 " +
+                          "  ELSE 0 END as is_power_phase " +
+                          "FROM user_info u " +
+                          "LEFT JOIN user_data_" + getCurrentDate() + " d ON u.user_id = d.user_id " +
+                          "WHERE u.route_number = ? AND u.branch_number = ?";
+                          
+            Cursor cursor = db.rawQuery(query, new String[]{routeNumber, branchNumber});
+            
+            while (cursor.moveToNext()) 
+            {
+                users.add(new User(
+                    cursor.getString(0),  // userId
+                    cursor.getString(1),  // userName
+                    cursor.getString(2),  // routeNumber
+                    cursor.getString(3),  // branchNumber
+                    cursor.getDouble(4),  // power
+                    (byte)cursor.getInt(5),  // currentPhase
+                    cursor.getInt(6) == 1    // isPowerPhase
+                ));
+            }
+            cursor.close();
+        } 
+        catch (Exception e) 
+        {
+            e.printStackTrace();
+        }
+        
+        return users;
+    }
     
+    // 获取所有用户数据
+    public List<User> getAllUsers() 
+    {
+        List<User> users = new ArrayList<>();
+        SQLiteDatabase db = getReadableDatabase();
+        Cursor cursor = null;
+        
+        try 
+        {
+            // 获取最近的日期
+            String latestDate = getLatestDate();
+            if (latestDate == null) 
+            {
+                Log.e("DatabaseHelper", "没有找到任何用电数据");
+                return users;
+            }
+            
+            Log.d("DatabaseHelper", "正在获取日期 " + latestDate + " 的用户数据");
+
+            // 简化的SQL查询，只获取最近一天的数据
+            String query = "SELECT u.user_id, u.user_name, u.route_number, u.branch_number, " +
+                          "d.phase_a_power, d.phase_b_power, d.phase_c_power, d.phase " +
+                          "FROM user_info u " +
+                          "INNER JOIN user_data d ON u.user_id = d.user_id " +
+                          "WHERE d.date = ? " +
+                          "AND (d.phase_a_power > 0 OR d.phase_b_power > 0 OR d.phase_c_power > 0)";
+                          
+            cursor = db.rawQuery(query, new String[]{latestDate});
+            Log.d("DatabaseHelper", "查询到 " + cursor.getCount() + " 条用户记录");
+            
+            while (cursor.moveToNext()) 
+            {
+                try 
+                {
+                    String userId = cursor.getString(0);
+                    String userName = cursor.getString(1);
+                    String routeNumber = cursor.getString(2);
+                    String branchNumber = cursor.getString(3);
+                    double phaseAPower = cursor.getDouble(4);
+                    double phaseBPower = cursor.getDouble(5);
+                    double phaseCPower = cursor.getDouble(6);
+                    String phase = cursor.getString(7);
+                    
+                    // 计算总功率
+                    double totalPower = phaseAPower + phaseBPower + phaseCPower;
+                    
+                    // 确定当前相位
+                    byte currentPhase = 0;
+                    if (phaseAPower > 0) currentPhase = 1;
+                    else if (phaseBPower > 0) currentPhase = 2;
+                    else if (phaseCPower > 0) currentPhase = 3;
+                    
+                    // 判断是否为动力相（三相都有电量）
+                    boolean isPowerPhase = phaseAPower > 0 && phaseBPower > 0 && phaseCPower > 0;
+
+                    User user = new User(userId, userName, routeNumber, branchNumber, 
+                                       totalPower, currentPhase, isPowerPhase);
+                    users.add(user);
+
+                    Log.d("DatabaseHelper", String.format(
+                        "读取到用户 - ID: %s, 名称: %s, 功率: %.2f, 相位: %d, 是否动力相: %b",
+                        userId, userName, totalPower, currentPhase, isPowerPhase
+                    ));
+                } 
+                catch (Exception e) 
+                {
+                    Log.e("DatabaseHelper", "处理用户数据时出错", e);
+                }
+            }
+        } 
+        catch (Exception e) 
+        {
+            Log.e("DatabaseHelper", "获取用户数据时出错", e);
+            e.printStackTrace();
+        } 
+        finally 
+        {
+            if (cursor != null) 
+            {
+                cursor.close();
+            }
+        }
+        
+        Log.d("DatabaseHelper", "总共返回 " + users.size() + " 个用户");
+        return users;
+    }
+
+    // 获取当前日期
+    private String getCurrentDate() 
+    {
+        return new java.text.SimpleDateFormat("yyyy_MM_dd").format(new java.util.Date());
+    }
 } 

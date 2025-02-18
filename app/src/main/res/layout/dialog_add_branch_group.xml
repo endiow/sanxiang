@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <EditText
+        android:id="@+id/etRouteNumber"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="回路编号"
+        android:inputType="text"
+        android:layout_marginBottom="8dp"/>
+
+    <EditText
+        android:id="@+id/etBranchNumber"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="支线编号"
+        android:inputType="text"/>
+
+</LinearLayout> 

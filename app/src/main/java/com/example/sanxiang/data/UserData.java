@@ -6,7 +6,7 @@ public class UserData
     private String userId;
     private String userName;
     private String routeNumber;
-    private String routeName;
+    private String branchNumber;  // 支线编号，0表示主干线，其他表示支线编号
     private String phase;
     private double phaseAPower;
     private double phaseBPower;
@@ -53,14 +53,14 @@ public class UserData
         this.routeNumber = routeNumber;
     }
 
-    public String getRouteName()
+    public String getBranchNumber()
     {
-        return routeName;
+        return branchNumber;
     }
 
-    public void setRouteName(String routeName)
+    public void setBranchNumber(String branchNumber)
     {
-        this.routeName = routeName;
+        this.branchNumber = branchNumber;
     }
 
     public String getPhase()

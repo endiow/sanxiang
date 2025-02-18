@@ -356,7 +356,7 @@ public class MainActivity extends AppCompatActivity
                             userData.setUserId(userId);
                             userData.setUserName(data[2].trim());
                             userData.setRouteNumber(data[3].trim());
-                            userData.setRouteName(data[4].trim());
+                            userData.setBranchNumber(data[4].trim());  // 第5列为支线编号（0表示主干线）
                             userData.setPhase(data[5].trim());
                             userData.setPhaseAPower(Double.parseDouble(data[6].trim()));
                             userData.setPhaseBPower(Double.parseDouble(data[7].trim()));
@@ -437,8 +437,27 @@ public class MainActivity extends AppCompatActivity
     //相位调整
     private void handleAdjustPhase()
     {
-        // TODO: 实现相位调整功能
-        Toast.makeText(this, "相位调整功能待实现", Toast.LENGTH_SHORT).show();
+        try 
+        {
+            // 检查是否有用户数据
+            DatabaseHelper dbHelper = new DatabaseHelper(this);
+            List<String> userIds = dbHelper.getAllUserIds();
+            
+            if (userIds.isEmpty()) 
+            {
+                Toast.makeText(this, "请先导入用户数据", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            
+            // 启动相位调整活动
+            Intent intent = new Intent(this, PhaseBalanceActivity.class);
+            startActivity(intent);
+        } 
+        catch (Exception e) 
+        {
+            e.printStackTrace();
+            Toast.makeText(this, "启动相位调整失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
     }
 
     //-----------------------------------清空数据-----------------------------------

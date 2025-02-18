@@ -48,11 +48,11 @@ public class UserDataAdapter extends RecyclerView.Adapter<UserDataAdapter.ViewHo
     }
 
     //根据用户ID过滤数据
-    public void filter(String userId)
+    public void filter(String searchId)
     {
         synchronized (this)
         {
-            if (userId == null || userId.trim().isEmpty())
+            if (searchId == null || searchId.trim().isEmpty())
             {
                 dataList = new ArrayList<>(allData);
             }
@@ -60,8 +60,24 @@ public class UserDataAdapter extends RecyclerView.Adapter<UserDataAdapter.ViewHo
             {
                 try
                 {
+                    String trimmedSearchId = searchId.trim();
                     dataList = allData.stream()
-                        .filter(d -> d != null && d.getUserId() != null && d.getUserId().contains(userId.trim()))
+                        .filter(d -> {
+                            if (d == null || d.getUserId() == null) return false;
+                            String userId = d.getUserId();
+                            // 确保用户ID长度为10位
+                            if (userId.length() != 10) return false;
+                            // 检查每一位是否匹配
+                            for (int i = 0; i < trimmedSearchId.length() && i < 10; i++)
+                            {
+                                if (trimmedSearchId.charAt(i) != '_' && // 使用_表示任意字符
+                                    trimmedSearchId.charAt(i) != userId.charAt(i))
+                                {
+                                    return false;
+                                }
+                            }
+                            return true;
+                        })
                         .collect(Collectors.toList());
                 }
                 catch (Exception e)
@@ -94,8 +110,9 @@ public class UserDataAdapter extends RecyclerView.Adapter<UserDataAdapter.ViewHo
             {
                 holder.tvUserInfo.setText(String.format("用户编号：%s  用户名称：%s", 
                                           data.getUserId(), data.getUserName()));
-                holder.tvRouteInfo.setText(String.format("回路编号：%s  线路名称：%s", 
-                                           data.getRouteNumber(), data.getRouteName()));
+                holder.tvRouteInfo.setText(String.format("回路编号：%s  支线编号：%s", 
+                                           data.getRouteNumber(), 
+                                           "0".equals(data.getBranchNumber()) ? "主干线" : data.getBranchNumber()));
                 holder.tvPhaseInfo.setText(String.format("相位：%s", data.getPhase()));
                 holder.tvPowerInfo.setText(String.format("A相电量：%.2f  B相电量：%.2f  C相电量：%.2f",
                                            data.getPhaseAPower(), data.getPhaseBPower(), data.getPhaseCPower()));

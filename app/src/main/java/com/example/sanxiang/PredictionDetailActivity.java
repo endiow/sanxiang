@@ -256,7 +256,6 @@ public class PredictionDetailActivity extends AppCompatActivity
     //显示具体预测过程
     private void showPredictionProcess()
     {
-        // 创建对话框显示预测过程
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("预测过程详情");
         
@@ -270,23 +269,88 @@ public class PredictionDetailActivity extends AppCompatActivity
         
         // 构建预测过程说明
         StringBuilder process = new StringBuilder();
+        
+        // 1. 数据准备
         process.append("1. 数据准备：\n");
         process.append("   - 收集最近30天的历史数据\n");
-        process.append("   - 数据点数量：").append(historicalData.size()).append("\n\n");
+        process.append("   - 实际获得数据点数量：").append(historicalData.size()).append("\n");
+        process.append("   - 数据时间范围：").append(historicalData.get(historicalData.size()-1).getDate())
+              .append(" 至 ").append(historicalData.get(0).getDate()).append("\n\n");
         
+        // 2. 数据预处理
         process.append("2. 数据预处理：\n");
-        process.append("   - 移除异常值\n");
-        process.append("   - 数据归一化\n\n");
+        process.append("   - 数据完整性检查\n");
+        process.append("   - 缺失值处理：使用0.0填充\n");
+        process.append("   - 数据排序：按日期升序排列\n");
         
-        process.append("3. 模型训练：\n");
-        process.append("   - 使用改进的Holt-Winters算法\n");
-        process.append("   - 考虑季节性(周期：7天)\n");
-        process.append("   - 加入自适应权重\n\n");
+        // 计算历史数据的统计信息
+        double[] statsA = calculateStats(historicalData, d -> d.getPhaseAPower());
+        double[] statsB = calculateStats(historicalData, d -> d.getPhaseBPower());
+        double[] statsC = calculateStats(historicalData, d -> d.getPhaseCPower());
         
+        process.append(String.format("   - 统计信息：\n"));
+        process.append(String.format("     A相：均值=%.2f, 标准差=%.2f\n", statsA[0], statsA[1]));
+        process.append(String.format("     B相：均值=%.2f, 标准差=%.2f\n", statsB[0], statsB[1]));
+        process.append(String.format("     C相：均值=%.2f, 标准差=%.2f\n\n", statsC[0], statsC[1]));
+        
+        // 3. 预测模型
+        process.append("3. 预测模型：\n");
+        String methodName = historicalData.size() >= 7 ? "Holt-Winters指数平滑" : "加权移动平均";
+        process.append("   - 使用模型：").append(methodName).append("\n");
+        
+        if (historicalData.size() >= 7)
+        {
+            process.append("   - 模型参数：\n");
+            process.append("     * 季节性：加法模型\n");
+            process.append("     * 季节周期：7天\n");
+            process.append("     * 趋势：加法模型（带阻尼）\n");
+            process.append("     * Box-Cox变换：是\n");
+            process.append("     * 偏差移除：是\n");
+        }
+        else
+        {
+            process.append("   - 由于数据量不足7天，使用加权移动平均\n");
+            process.append("   - 权重：指数衰减\n");
+        }
+        process.append("\n");
+        
+        // 4. 预测结果
         process.append("4. 预测结果：\n");
-        process.append(String.format("   A相：%.2f\n", predictedPhaseA));
-        process.append(String.format("   B相：%.2f\n", predictedPhaseB));
-        process.append(String.format("   C相：%.2f\n", predictedPhaseC));
+        process.append(String.format("   A相：%.2f （95%%置信区间：%.2f - %.2f）\n", 
+            predictedPhaseA, 
+            Math.max(0, predictedPhaseA - 1.96 * statsA[1]),
+            predictedPhaseA + 1.96 * statsA[1]));
+        process.append(String.format("   B相：%.2f （95%%置信区间：%.2f - %.2f）\n", 
+            predictedPhaseB,
+            Math.max(0, predictedPhaseB - 1.96 * statsB[1]),
+            predictedPhaseB + 1.96 * statsB[1]));
+        process.append(String.format("   C相：%.2f （95%%置信区间：%.2f - %.2f）\n\n",
+            predictedPhaseC,
+            Math.max(0, predictedPhaseC - 1.96 * statsC[1]),
+            predictedPhaseC + 1.96 * statsC[1]));
+        
+        // 5. 可靠性分析
+        process.append("5. 预测可靠性分析：\n");
+        double maxPower = Math.max(Math.max(predictedPhaseA, predictedPhaseB), predictedPhaseC);
+        double minPower = Math.min(Math.min(predictedPhaseA, predictedPhaseB), predictedPhaseC);
+        double avgPower = (predictedPhaseA + predictedPhaseB + predictedPhaseC) / 3;
+        double variance = Math.sqrt(
+            (Math.pow(predictedPhaseA - avgPower, 2) + 
+             Math.pow(predictedPhaseB - avgPower, 2) + 
+             Math.pow(predictedPhaseC - avgPower, 2)) / 3
+        );
+        double variationCoef = (variance / avgPower) * 100;
+        
+        process.append(String.format("   - 预测值范围：%.2f - %.2f\n", minPower, maxPower));
+        process.append(String.format("   - 平均值：%.2f\n", avgPower));
+        process.append(String.format("   - 标准差：%.2f\n", variance));
+        process.append(String.format("   - 变异系数：%.2f%%\n", variationCoef));
+        process.append("   - 置信水平：95%\n");
+        process.append("   - 可信度评估：").append(getReliabilityLevel(variationCoef)).append("\n\n");
+        
+        // 6. 建议
+        process.append("6. 预测建议：\n");
+        appendRecommendations(process, variationCoef, statsA[0], statsB[0], statsC[0]);
         
         // 创建带滚动条的文本视图
         ScrollView scrollView = new ScrollView(this);
@@ -299,5 +363,96 @@ public class PredictionDetailActivity extends AppCompatActivity
         builder.setView(scrollView)
                .setPositiveButton("确定", null)
                .show();
+    }
+
+    // 计算统计信息（均值和标准差）
+    private double[] calculateStats(List<UserData> data, PowerExtractor extractor)
+    {
+        double sum = 0;
+        double squareSum = 0;
+        int count = data.size();
+        
+        for (UserData d : data)
+        {
+            double value = extractor.getPower(d);
+            sum += value;
+            squareSum += value * value;
+        }
+        
+        double mean = sum / count;
+        double variance = (squareSum / count) - (mean * mean);
+        double stdDev = Math.sqrt(variance);
+        
+        return new double[]{mean, stdDev};
+    }
+
+    // 计算偏差百分比
+    private double calculateDeviation(double value, double mean)
+    {
+        return ((value - mean) / mean) * 100;
+    }
+
+    // 获取可信度评估
+    private String getReliabilityLevel(double variationCoef)
+    {
+        if (variationCoef < 10)
+        {
+            return "很高（变异系数<10%）";
+        }
+        else if (variationCoef < 20)
+        {
+            return "较高（变异系数<20%）";
+        }
+        else if (variationCoef < 30)
+        {
+            return "中等（变异系数<30%）";
+        }
+        else
+        {
+            return "较低（变异系数≥30%）";
+        }
+    }
+
+    // 添加建议
+    private void appendRecommendations(StringBuilder process, double variationCoef,
+                                     double meanA, double meanB, double meanC)
+    {
+        // 基于变异系数的建议
+        if (variationCoef >= 30)
+        {
+            process.append("   - 预测波动较大，建议：\n");
+            process.append("     * 密切关注实际用电情况\n");
+            process.append("     * 考虑增加检测频率\n");
+            process.append("     * 分析用电模式变化原因\n");
+        }
+        
+        // 基于相位均值对比的建议
+        double maxMean = Math.max(Math.max(meanA, meanB), meanC);
+        double minMean = Math.min(Math.min(meanA, meanB), meanC);
+        if ((maxMean - minMean) / maxMean > 0.2)
+        {
+            process.append("   - 三相负载不平衡，建议：\n");
+            process.append("     * 检查负载分布\n");
+            process.append("     * 考虑进行相位调整\n");
+            process.append("     * 评估设备运行状况\n");
+        }
+        
+        // 基于预测值与历史均值对比的建议
+        if (Math.abs(predictedPhaseA - meanA) / meanA > 0.2 ||
+            Math.abs(predictedPhaseB - meanB) / meanB > 0.2 ||
+            Math.abs(predictedPhaseC - meanC) / meanC > 0.2)
+        {
+            process.append("   - 预测值与历史均值差异较大，建议：\n");
+            process.append("     * 分析用电模式变化\n");
+            process.append("     * 检查是否有新增用电设备\n");
+            process.append("     * 评估是否存在异常用电情况\n");
+        }
+    }
+
+    // 用于提取电量数据的函数式接口
+    @FunctionalInterface
+    interface PowerExtractor
+    {
+        double getPower(UserData data);
     }
 }

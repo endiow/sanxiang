@@ -33,6 +33,11 @@
         <activity android:name=".PredictionDetailActivity" />
         <activity android:name=".TableViewActivity" />
         <activity android:name=".UserDetailActivity" />
+        <activity
+            android:name=".PhaseBalanceActivity"
+            android:label="相位调整"
+            android:exported="false">
+        </activity>
     </application>
 
 </manifest>

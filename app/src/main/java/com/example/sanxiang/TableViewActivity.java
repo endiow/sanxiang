@@ -64,7 +64,11 @@ public class TableViewActivity extends AppCompatActivity
 
     private void setupUserInfoSearch()
     {
-        etSearch.setHint("输入用户编号搜索...");
+        etSearch.setHint("输入用户编号搜索");
+        etSearch.setFilters(new android.text.InputFilter[] 
+        {
+            new android.text.InputFilter.LengthFilter(10)
+        });
         etSearch.addTextChangedListener(new TextWatcher()
         {
             @Override
@@ -224,17 +228,56 @@ public class TableViewActivity extends AppCompatActivity
     }
 
     // 用户信息搜索
-    private void filterUserInfo(String query)
+    private void filterUserInfo(String searchId)
     {
-        List<String> filteredList = new ArrayList<>();
-        for (String row : allRows)
+        if (searchId == null || searchId.trim().isEmpty())
         {
-            if (row.toLowerCase().contains(query.toLowerCase()))
-            {
-                filteredList.add(row);
-            }
+            adapter.updateData(allRows);
+            return;
         }
-        adapter.updateData(filteredList);
+
+        try
+        {
+            List<String> filteredList = new ArrayList<>();
+            String trimmedSearchId = searchId.trim();
+            
+            for (String row : allRows)
+            {
+                // 提取用户ID
+                int start = row.indexOf("用户编号：") + 5;
+                int end = row.indexOf("\n", start);
+                if (start >= 5 && end > start)
+                {
+                    String userId = row.substring(start, end).trim();
+                    
+                    // 确保用户ID长度为10位
+                    if (userId.length() != 10) continue;
+                    
+                    // 检查每一位是否匹配
+                    boolean matches = true;
+                    for (int i = 0; i < trimmedSearchId.length() && i < 10; i++)
+                    {
+                        if (trimmedSearchId.charAt(i) != '_' && // 使用_表示任意字符
+                            trimmedSearchId.charAt(i) != userId.charAt(i))
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    
+                    if (matches)
+                    {
+                        filteredList.add(row);
+                    }
+                }
+            }
+            adapter.updateData(filteredList);
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+            adapter.updateData(allRows);
+        }
     }
 
     // 总电量搜索

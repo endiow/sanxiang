@@ -141,7 +141,14 @@ public class UserDataActivity extends AppCompatActivity
             return false;
         });
 
-        // 设置搜索框的文本变化监听器
+        // 设置搜索框的最大长度限制
+        etSearch.setHint("输入用户编号搜索");
+        etSearch.setFilters(new android.text.InputFilter[] 
+        {
+            new android.text.InputFilter.LengthFilter(10)
+        });
+        
+        // 设置文本变化监听器，实现实时过滤
         etSearch.addTextChangedListener(new android.text.TextWatcher()
         {
             @Override
