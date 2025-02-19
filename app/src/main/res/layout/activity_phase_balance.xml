@@ -81,11 +81,30 @@
                 android:layout_height="match_parent"
                 android:layout_marginTop="8dp">
 
-                <TextView
-                    android:id="@+id/tvResult"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:textSize="14sp"/>
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvResultStats"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="14sp"/>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#DDDDDD"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="8dp"/>
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/rvOptimizedGroups"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"/>
+
+                </LinearLayout>
 
             </ScrollView>
 

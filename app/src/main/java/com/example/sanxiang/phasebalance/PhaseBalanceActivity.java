@@ -4,6 +4,11 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.text.method.LinkMovementMethod;
+import android.text.style.ClickableSpan;
+import android.text.SpannableString;
+import android.text.TextPaint;
+import android.text.Spanned;
 import android.util.Log;
 import android.view.View;
 import android.widget.*;
@@ -27,10 +32,13 @@ public class PhaseBalanceActivity extends AppCompatActivity
 {
     private DatabaseHelper dbHelper;
     private RecyclerView rvBranchGroups;
+    private RecyclerView rvOptimizedGroups;
     private BranchGroupAdapter adapter;
+    private BranchGroupAdapter optimizedAdapter;
     private List<BranchGroup> branchGroups;
+    private List<BranchGroup> optimizedGroups;
     private Button btnOptimize;
-    private TextView tvResult;
+    private TextView tvResultStats;
     private FloatingActionButton fabAdd;
     private FloatingActionButton fabDelete;
     private TextView tvSelectedCount;
@@ -45,6 +53,7 @@ public class PhaseBalanceActivity extends AppCompatActivity
         
         dbHelper = new DatabaseHelper(this);
         branchGroups = new ArrayList<>();
+        optimizedGroups = new ArrayList<>();
         
         initializeViews();
         setupListeners();
@@ -54,8 +63,9 @@ public class PhaseBalanceActivity extends AppCompatActivity
     private void initializeViews() 
     {
         rvBranchGroups = findViewById(R.id.rvBranchGroups);
+        rvOptimizedGroups = findViewById(R.id.rvOptimizedGroups);
         btnOptimize = findViewById(R.id.btnOptimize);
-        tvResult = findViewById(R.id.tvResult);
+        tvResultStats = findViewById(R.id.tvResultStats);
         fabAdd = findViewById(R.id.fabAdd);
         fabDelete = findViewById(R.id.fabDelete);
         tvSelectedCount = findViewById(R.id.tvSelectedCount);
@@ -73,6 +83,13 @@ public class PhaseBalanceActivity extends AppCompatActivity
             }
         });
         
+        optimizedAdapter = new BranchGroupAdapter(optimizedGroups, group -> {
+            Intent intent = new Intent(this, BranchUsersActivity.class);
+            intent.putExtra(BranchUsersActivity.EXTRA_ROUTE_NUMBER, group.getRouteNumber());
+            intent.putExtra(BranchUsersActivity.EXTRA_BRANCH_NUMBER, group.getBranchNumber());
+            startActivity(intent);
+        });
+        
         adapter.setSelectionChangeListener(selectedCount -> {
             tvSelectedCount.setText(String.format("已选择 %d 项", selectedCount));
             tvSelectedCount.setVisibility(selectedCount > 0 ? View.VISIBLE : View.GONE);
@@ -81,6 +98,9 @@ public class PhaseBalanceActivity extends AppCompatActivity
         
         rvBranchGroups.setLayoutManager(new LinearLayoutManager(this));
         rvBranchGroups.setAdapter(adapter);
+        
+        rvOptimizedGroups.setLayoutManager(new LinearLayoutManager(this));
+        rvOptimizedGroups.setAdapter(optimizedAdapter);
     }
     
     private void setupListeners() 
@@ -408,17 +428,12 @@ public class PhaseBalanceActivity extends AppCompatActivity
     {
         try 
         {
-            StringBuilder result = new StringBuilder();
-            result.append("优化结果：\n\n");
+            StringBuilder stats = new StringBuilder();
             
-            // 计算每相总电量
+            // 计算每相总电量和变化的用户数
             double[] phasePowers = new double[3];
             int changedUsers = 0;
-            int changedPowerUsers = 0;  // 记录改变的动力相用户数
-            
-            // 分类存储用户变化信息
-            List<String> normalChanges = new ArrayList<>();    // 普通用户变化
-            List<String> powerChanges = new ArrayList<>();     // 动力相用户变化
+            int changedPowerUsers = 0;  // 添加动力用户计数
             
             for (int i = 0; i < users.size(); i++) 
             {
@@ -433,40 +448,17 @@ public class PhaseBalanceActivity extends AppCompatActivity
                 if (newPhase != user.getCurrentPhase()) 
                 {
                     changedUsers++;
-                    
-                    // 构建详细的变化信息
-                    String changeInfo = String.format(
-                        "用户ID：%s\n" +
-                        "用户名称：%s\n" +
-                        "回路-支线：%s-%s\n" +
-                        "原相位：%d，新相位：%d\n" +
-                        "用户功率：%.2f\n",
-                        user.getUserId(),
-                        user.getUserName(),
-                        user.getRouteNumber(),
-                        user.getBranchNumber(),
-                        user.getCurrentPhase(),
-                        newPhase,
-                        user.getPower()
-                    );
-                    
                     if (user.isPowerPhase()) 
                     {
                         changedPowerUsers++;
-                        powerChanges.add(changeInfo);
-                    } 
-                    else 
-                    {
-                        normalChanges.add(changeInfo);
                     }
                 }
             }
             
-            // 显示总体统计信息
-            result.append(String.format("总调整用户数：%d（其中动力相用户：%d）\n\n", 
-                changedUsers, changedPowerUsers));
+            // 显示总体统计信息，包括动力用户数
+            stats.append(String.format("总调整用户数：%d（其中动力用户：%d）\n\n", changedUsers, changedPowerUsers));
             
-            result.append(String.format("优化后三相电量：\n" +
+            stats.append(String.format("三相总电量：\n" +
                 "A相：%.2f\n" +
                 "B相：%.2f\n" +
                 "C相：%.2f\n\n",
@@ -478,37 +470,70 @@ public class PhaseBalanceActivity extends AppCompatActivity
             if (maxPower > 0) 
             {
                 double unbalanceRate = ((maxPower - minPower) / maxPower) * 100;
-                result.append(String.format("三相不平衡度：%.2f%%\n\n", unbalanceRate));
+                stats.append(String.format("三相不平衡度：%.2f%%", unbalanceRate));
             } 
             else 
             {
-                result.append("三相不平衡度：0.00%\n\n");
+                stats.append("三相不平衡度：0.00%");
             }
             
-            // 显示动力相用户变化
-            if (!powerChanges.isEmpty()) 
+            // 设置统计信息
+            tvResultStats.setText(stats.toString());
+            
+            // 清空并重新添加优化后的支线组
+            optimizedGroups.clear();
+            
+            // 按支线组分组显示用户
+            Map<String, Map<String, Integer>> groupedUsers = new HashMap<>();
+            for (int i = 0; i < users.size(); i++) 
             {
-                result.append("动力相用户调整明细：\n");
-                result.append("----------------------------------------\n");
-                for (String change : powerChanges) 
+                User user = users.get(i);
+                byte newPhase = solution.getPhase(i);
+                
+                if (newPhase != user.getCurrentPhase()) 
                 {
-                    result.append(change).append("----------------------------------------\n");
+                    String routeNumber = user.getRouteNumber();
+                    String branchNumber = user.getBranchNumber();
+                    
+                    groupedUsers.computeIfAbsent(routeNumber, k -> new HashMap<>())
+                               .merge(branchNumber, 1, Integer::sum);
                 }
-                result.append("\n");
             }
             
-            // 显示普通用户变化
-            if (!normalChanges.isEmpty()) 
+            // 将分组数据转换为支线组列表
+            List<BranchGroup> tempGroups = new ArrayList<>();
+            for (Map.Entry<String, Map<String, Integer>> routeEntry : groupedUsers.entrySet()) 
             {
-                result.append("普通用户调整明细：\n");
-                result.append("----------------------------------------\n");
-                for (String change : normalChanges) 
+                String routeNumber = routeEntry.getKey();
+                for (Map.Entry<String, Integer> branchEntry : routeEntry.getValue().entrySet()) 
                 {
-                    result.append(change).append("----------------------------------------\n");
+                    String branchNumber = branchEntry.getKey();
+                    int userCount = branchEntry.getValue();
+                    
+                    BranchGroup group = new BranchGroup(routeNumber, branchNumber);
+                    group.setUserCount(userCount);
+                    tempGroups.add(group);
                 }
             }
             
-            tvResult.setText(result.toString());
+            // 对支线组进行排序
+            Collections.sort(tempGroups, (g1, g2) -> {
+                // 先按回路号排序
+                int routeCompare = g1.getRouteNumber().compareTo(g2.getRouteNumber());
+                if (routeCompare != 0) 
+                {
+                    return routeCompare;
+                }
+                // 回路号相同时按支线号排序
+                return g1.getBranchNumber().compareTo(g2.getBranchNumber());
+            });
+            
+            // 更新优化后的支线组列表
+            optimizedGroups.clear();
+            optimizedGroups.addAll(tempGroups);
+            
+            // 通知适配器数据已更新
+            optimizedAdapter.notifyDataSetChanged();
         } 
         catch (Exception e) 
         {
