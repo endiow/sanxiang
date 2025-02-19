@@ -97,7 +97,7 @@ public class OptimizedUserAdapter extends RecyclerView.Adapter<OptimizedUserAdap
                                     userData.getPhaseCPower();
                                     
                 holder.tvPhaseChange.setText(String.format(
-                    "当前：%s相 (%.2f)\n调整：%s相",
+                    "当前功率：%s相=%.2f\n相位调整：%s相",
                     getPhaseString(user.getCurrentPhase()), 
                     currentPower,
                     getPhaseString(newPhase)

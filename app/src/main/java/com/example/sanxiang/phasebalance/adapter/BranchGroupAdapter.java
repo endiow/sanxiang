@@ -96,8 +96,18 @@ public class BranchGroupAdapter extends RecyclerView.Adapter<BranchGroupAdapter.
         DatabaseHelper dbHelper = new DatabaseHelper(holder.itemView.getContext());
         List<User> users = dbHelper.getUsersByRouteBranch(group.getRouteNumber(), group.getBranchNumber());
         
-        holder.tvBranchGroup.setText(String.format("回路%s支线%s（%d个用户）", 
-            group.getRouteNumber(), group.getBranchNumber(), users.size()));
+        if (group.getUserCount() > 0) 
+        {
+            // 优化结果显示调整用户数
+            holder.tvBranchGroup.setText(String.format("回路%s支线%s（调整%d个用户）", 
+                group.getRouteNumber(), group.getBranchNumber(), group.getUserCount()));
+        }
+        else 
+        {
+            // 原始列表显示总用户数
+            holder.tvBranchGroup.setText(String.format("回路%s支线%s（%d个用户）", 
+                group.getRouteNumber(), group.getBranchNumber(), users.size()));
+        }
             
         // 处理选择框的显示状态
         holder.checkbox.setVisibility(isSelectionMode ? View.VISIBLE : View.GONE);
