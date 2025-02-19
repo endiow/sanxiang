@@ -66,7 +66,7 @@ public class TableViewActivity extends AppCompatActivity
 
     private void setupUserInfoSearch()
     {
-        etSearch.setHint("输入用户编号搜索");
+        etSearch.setHint("输入用户编号搜索...");
         etSearch.setFilters(new android.text.InputFilter[] 
         {
             new android.text.InputFilter.LengthFilter(10)

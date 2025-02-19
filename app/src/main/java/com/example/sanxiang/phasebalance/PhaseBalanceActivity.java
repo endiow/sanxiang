@@ -122,18 +122,7 @@ public class PhaseBalanceActivity extends AppCompatActivity
                    if (!routeNumber.isEmpty() && !branchNumber.isEmpty()) 
                    {
                        // 检查支线组是否已存在
-                       boolean exists = false;
-                       for (BranchGroup group : branchGroups) 
-                       {
-                           if (group.getRouteNumber().equals(routeNumber) && 
-                               group.getBranchNumber().equals(branchNumber)) 
-                           {
-                               exists = true;
-                               break;
-                           }
-                       }
-                       
-                       if (exists) 
+                       if (dbHelper.branchGroupExists(routeNumber, branchNumber)) 
                        {
                            Toast.makeText(this, "该支线组已存在", Toast.LENGTH_SHORT).show();
                            return;
@@ -147,15 +136,57 @@ public class PhaseBalanceActivity extends AppCompatActivity
                            return;
                        }
                        
-                       // 添加支线组
-                       BranchGroup group = new BranchGroup(routeNumber, branchNumber);
-                       branchGroups.add(group);
-                       adapter.notifyDataSetChanged();
-                       Toast.makeText(this, String.format("支线组添加成功，包含%d个用户", users.size()), Toast.LENGTH_SHORT).show();
+                       // 添加支线组到数据库
+                       if (dbHelper.addBranchGroup(routeNumber, branchNumber)) 
+                       {
+                           // 重新加载支线组数据
+                           loadBranchGroups();
+                           Toast.makeText(this, String.format("支线组添加成功，包含%d个用户", users.size()), Toast.LENGTH_SHORT).show();
+                       } 
+                       else 
+                       {
+                           Toast.makeText(this, "添加支线组失败", Toast.LENGTH_SHORT).show();
+                       }
                    }
                })
                .setNegativeButton("取消", null)
                .show();
+    }
+    
+    private void loadBranchGroups() 
+    {
+        try 
+        {
+            branchGroups.clear();
+            List<BranchGroup> groups = dbHelper.getAllBranchGroups();
+            if (groups != null && !groups.isEmpty()) 
+            {
+                branchGroups.addAll(groups);
+                adapter.notifyDataSetChanged();
+            }
+        } 
+        catch (Exception e) 
+        {
+            e.printStackTrace();
+            Toast.makeText(this, "加载支线组数据失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+    
+    @Override
+    protected void onResume() 
+    {
+        super.onResume();
+        loadBranchGroups();
+    }
+    
+    @Override
+    protected void onDestroy() 
+    {
+        super.onDestroy();
+        if (dbHelper != null) 
+        {
+            dbHelper.close();
+        }
     }
     
     private List<User> getUsersByRouteBranch(String routeNumber, String branchNumber) 

@@ -1,6 +1,9 @@
 package com.example.sanxiang.phasebalance;
 
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
@@ -21,6 +24,7 @@ public class BranchUsersActivity extends AppCompatActivity
     private DatabaseHelper dbHelper;
     private RecyclerView rvUsers;
     private TextView tvBranchInfo;
+    private EditText etSearch;
     private BranchUserListAdapter adapter;
     
     @Override
@@ -44,6 +48,7 @@ public class BranchUsersActivity extends AppCompatActivity
             dbHelper = new DatabaseHelper(this);
             
             initializeViews();
+            setupSearch();
             loadUsers(routeNumber, branchNumber);
         } 
         catch (Exception e) 
@@ -58,10 +63,29 @@ public class BranchUsersActivity extends AppCompatActivity
     {
         rvUsers = findViewById(R.id.rvUsers);
         tvBranchInfo = findViewById(R.id.tvBranchInfo);
+        etSearch = findViewById(R.id.etSearch);
         
         rvUsers.setLayoutManager(new LinearLayoutManager(this));
         adapter = new BranchUserListAdapter(new ArrayList<>());
         rvUsers.setAdapter(adapter);
+    }
+
+    private void setupSearch() 
+    {
+        etSearch.addTextChangedListener(new TextWatcher() 
+        {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+            @Override
+            public void afterTextChanged(Editable s) 
+            {
+                adapter.filter(s.toString());
+            }
+        });
     }
     
     private void loadUsers(String routeNumber, String branchNumber) 

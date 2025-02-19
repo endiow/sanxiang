@@ -41,6 +41,14 @@ android
                 install "pandas==1.3.2"
                 install "statsmodels==0.11.0"
             }
+
+            sourceSets 
+            {
+                main 
+                {
+                    python.srcDirs = ["src/main/java/com/example/sanxiang/prediction/python"]
+                }
+            }
         }
     }
 
