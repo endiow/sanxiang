@@ -11,6 +11,8 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.cardview.widget.CardView;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import com.example.sanxiang.R;
 import com.example.sanxiang.phasebalance.adapter.BranchGroupAdapter;
@@ -18,7 +20,6 @@ import com.example.sanxiang.phasebalance.algorithm.*;
 import com.example.sanxiang.phasebalance.model.*;
 import com.example.sanxiang.userdata.model.UserData;
 import com.example.sanxiang.db.DatabaseHelper;
-import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import java.util.*;
 
@@ -30,6 +31,11 @@ public class PhaseBalanceActivity extends AppCompatActivity
     private List<BranchGroup> branchGroups;
     private Button btnOptimize;
     private TextView tvResult;
+    private FloatingActionButton fabAdd;
+    private FloatingActionButton fabDelete;
+    private TextView tvSelectedCount;
+    private CardView cardDelete;
+    private Button btnDelete;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) 
@@ -42,6 +48,7 @@ public class PhaseBalanceActivity extends AppCompatActivity
         
         initializeViews();
         setupListeners();
+        loadBranchGroups();
     }
     
     private void initializeViews() 
@@ -49,25 +56,110 @@ public class PhaseBalanceActivity extends AppCompatActivity
         rvBranchGroups = findViewById(R.id.rvBranchGroups);
         btnOptimize = findViewById(R.id.btnOptimize);
         tvResult = findViewById(R.id.tvResult);
+        fabAdd = findViewById(R.id.fabAdd);
+        fabDelete = findViewById(R.id.fabDelete);
+        tvSelectedCount = findViewById(R.id.tvSelectedCount);
+        cardDelete = findViewById(R.id.cardDelete);
+        btnDelete = findViewById(R.id.btnDelete);
         
         adapter = new BranchGroupAdapter(branchGroups, group -> {
             // 处理支线组点击事件
-            Intent intent = new Intent(this, BranchUsersActivity.class);
-            intent.putExtra(BranchUsersActivity.EXTRA_ROUTE_NUMBER, group.getRouteNumber());
-            intent.putExtra(BranchUsersActivity.EXTRA_BRANCH_NUMBER, group.getBranchNumber());
-            startActivity(intent);
+            if (!adapter.isSelectionMode()) 
+            {
+                Intent intent = new Intent(this, BranchUsersActivity.class);
+                intent.putExtra(BranchUsersActivity.EXTRA_ROUTE_NUMBER, group.getRouteNumber());
+                intent.putExtra(BranchUsersActivity.EXTRA_BRANCH_NUMBER, group.getBranchNumber());
+                startActivity(intent);
+            }
+        });
+        
+        adapter.setSelectionChangeListener(selectedCount -> {
+            tvSelectedCount.setText(String.format("已选择 %d 项", selectedCount));
+            tvSelectedCount.setVisibility(selectedCount > 0 ? View.VISIBLE : View.GONE);
+            cardDelete.setVisibility(selectedCount > 0 ? View.VISIBLE : View.GONE);
         });
         
         rvBranchGroups.setLayoutManager(new LinearLayoutManager(this));
         rvBranchGroups.setAdapter(adapter);
-        
-        FloatingActionButton fabAdd = findViewById(R.id.fabAdd);
-        fabAdd.setOnClickListener(v -> showAddBranchGroupDialog());
     }
     
     private void setupListeners() 
     {
         btnOptimize.setOnClickListener(v -> optimizePhases());
+        fabAdd.setOnClickListener(v -> showAddBranchGroupDialog());
+        
+        fabDelete.setOnClickListener(v -> {
+            if (adapter.isSelectionMode()) 
+            {
+                // 退出选择模式
+                exitSelectionMode();
+            } 
+            else 
+            {
+                // 进入选择模式
+                enterSelectionMode();
+            }
+        });
+        
+        btnDelete.setOnClickListener(v -> {
+            List<BranchGroup> selectedGroups = adapter.getSelectedGroups();
+            if (!selectedGroups.isEmpty()) 
+            {
+                showDeleteConfirmationDialog(selectedGroups);
+            }
+        });
+    }
+    
+    private void enterSelectionMode() 
+    {
+        adapter.setSelectionMode(true);
+        fabDelete.setVisibility(View.GONE);  // 隐藏删除按钮
+        btnOptimize.setVisibility(View.GONE);
+    }
+    
+    private void exitSelectionMode() 
+    {
+        adapter.setSelectionMode(false);
+        fabDelete.setVisibility(View.VISIBLE);  // 显示删除按钮
+        btnOptimize.setVisibility(View.VISIBLE);
+        tvSelectedCount.setVisibility(View.GONE);
+        cardDelete.setVisibility(View.GONE);
+    }
+    
+    private void showDeleteConfirmationDialog(List<BranchGroup> selectedGroups) 
+    {
+        new AlertDialog.Builder(this)
+            .setTitle("确认删除")
+            .setMessage(String.format("确定要删除选中的 %d 个支线组吗？", selectedGroups.size()))
+            .setPositiveButton("确定", (dialog, which) -> {
+                deleteSelectedGroups(selectedGroups);
+            })
+            .setNegativeButton("取消", null)
+            .show();
+    }
+    
+    private void deleteSelectedGroups(List<BranchGroup> selectedGroups) 
+    {
+        boolean success = true;
+        for (BranchGroup group : selectedGroups) 
+        {
+            if (!dbHelper.deleteBranchGroup(group.getRouteNumber(), group.getBranchNumber())) 
+            {
+                success = false;
+                break;
+            }
+        }
+        
+        if (success) 
+        {
+            Toast.makeText(this, "删除成功", Toast.LENGTH_SHORT).show();
+            loadBranchGroups();
+            exitSelectionMode();
+        } 
+        else 
+        {
+            Toast.makeText(this, "删除失败", Toast.LENGTH_SHORT).show();
+        }
     }
     
     private void showAddBranchGroupDialog() 
@@ -422,6 +514,21 @@ public class PhaseBalanceActivity extends AppCompatActivity
         {
             e.printStackTrace();
             Toast.makeText(this, "显示优化结果失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+    
+    @Override
+    public void onBackPressed() 
+    {
+        if (adapter.isSelectionMode()) 
+        {
+            // 如果在选择模式，则退出选择模式
+            exitSelectionMode();
+        } 
+        else 
+        {
+            // 否则执行默认的返回操作
+            super.onBackPressed();
         }
     }
 } 

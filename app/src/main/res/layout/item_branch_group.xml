@@ -15,6 +15,13 @@
         android:padding="16dp"
         android:gravity="center_vertical">
 
+        <CheckBox
+            android:id="@+id/checkbox"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:visibility="gone"/>
+
         <TextView
             android:id="@+id/tvBranchGroup"
             android:layout_width="0dp"
@@ -23,6 +30,7 @@
             android:textSize="16sp"/>
 
         <ImageView
+            android:id="@+id/ivArrow"
             android:layout_width="24dp"
             android:layout_height="24dp"
             android:src="@drawable/ic_arrow_forward"
