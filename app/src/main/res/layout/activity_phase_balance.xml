@@ -67,20 +67,18 @@
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rvBranchGroups"
                 android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"/>
+                android:layout_height="wrap_content"/>
 
             <Button
                 android:id="@+id/btnOptimize"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="优化相位"
+                android:text="调整相位"
                 android:layout_marginTop="8dp"/>
 
             <ScrollView
                 android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
+                android:layout_height="match_parent"
                 android:layout_marginTop="8dp">
 
                 <TextView
