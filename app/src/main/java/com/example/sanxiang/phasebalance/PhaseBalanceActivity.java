@@ -44,6 +44,8 @@ public class PhaseBalanceActivity extends AppCompatActivity
     private TextView tvSelectedCount;
     private CardView cardDelete;
     private Button btnDelete;
+    private List<User> users;
+    private PhaseBalancer.Solution solution;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) 
@@ -54,6 +56,7 @@ public class PhaseBalanceActivity extends AppCompatActivity
         dbHelper = new DatabaseHelper(this);
         branchGroups = new ArrayList<>();
         optimizedGroups = new ArrayList<>();
+        users = new ArrayList<>();
         
         initializeViews();
         setupListeners();
@@ -84,10 +87,82 @@ public class PhaseBalanceActivity extends AppCompatActivity
         });
         
         optimizedAdapter = new BranchGroupAdapter(optimizedGroups, group -> {
-            Intent intent = new Intent(this, BranchUsersActivity.class);
-            intent.putExtra(BranchUsersActivity.EXTRA_ROUTE_NUMBER, group.getRouteNumber());
-            intent.putExtra(BranchUsersActivity.EXTRA_BRANCH_NUMBER, group.getBranchNumber());
-            startActivity(intent);
+            try 
+            {
+                if (solution == null || users == null || users.isEmpty()) 
+                {
+                    Toast.makeText(this, "请先执行相位优化", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                
+                Intent intent = new Intent(this, OptimizedBranchUsersActivity.class);
+                intent.putExtra(OptimizedBranchUsersActivity.EXTRA_ROUTE_NUMBER, group.getRouteNumber());
+                intent.putExtra(OptimizedBranchUsersActivity.EXTRA_BRANCH_NUMBER, group.getBranchNumber());
+                
+                // 获取需要调整的用户ID列表
+                ArrayList<String> adjustedUserIds = new ArrayList<>();
+                for (int i = 0; i < users.size(); i++) 
+                {
+                    User user = users.get(i);
+                    if (user != null && 
+                        group.getRouteNumber().equals(user.getRouteNumber()) && 
+                        group.getBranchNumber().equals(user.getBranchNumber())) 
+                    {
+                        byte newPhase = solution.getPhase(i);
+                        if (newPhase != user.getCurrentPhase()) 
+                        {
+                            adjustedUserIds.add(user.getUserId());
+                        }
+                    }
+                }
+                
+                if (adjustedUserIds.isEmpty()) 
+                {
+                    Toast.makeText(this, "该支线组没有需要调整的用户", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                
+                // 获取该支线组所有用户的优化后相位
+                List<User> branchUsers = dbHelper.getUsersByRouteBranch(group.getRouteNumber(), group.getBranchNumber()
+                );
+                byte[] optimizedPhases = new byte[branchUsers.size()];
+                byte[] phaseMoves = new byte[branchUsers.size()];  // 添加移动次数数组
+                for (int i = 0; i < branchUsers.size(); i++) 
+                {
+                    User branchUser = branchUsers.get(i);
+                    // 在所有用户中找到当前用户的索引
+                    int userIndex = -1;
+                    for (int j = 0; j < users.size(); j++) 
+                    {
+                        if (users.get(j).getUserId().equals(branchUser.getUserId())) 
+                        {
+                            userIndex = j;
+                            break;
+                        }
+                    }
+                    // 如果找到用户，获取其优化后的相位和移动次数
+                    if (userIndex != -1) 
+                    {
+                        optimizedPhases[i] = solution.getPhase(userIndex);
+                        phaseMoves[i] = solution.getMoves(userIndex);  // 获取移动次数
+                    } 
+                    else 
+                    {
+                        optimizedPhases[i] = branchUser.getCurrentPhase();
+                        phaseMoves[i] = 0;  // 未调整的用户移动次数为0
+                    }
+                }
+                
+                intent.putExtra(OptimizedBranchUsersActivity.EXTRA_NEW_PHASES, optimizedPhases);
+                intent.putExtra(OptimizedBranchUsersActivity.EXTRA_PHASE_MOVES, phaseMoves);  // 添加移动次数
+                intent.putStringArrayListExtra(OptimizedBranchUsersActivity.EXTRA_ADJUSTED_USERS, adjustedUserIds);
+                startActivity(intent);
+            } 
+            catch (Exception e) 
+            {
+                e.printStackTrace();
+                Toast.makeText(this, "跳转失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
         });
         
         adapter.setSelectionChangeListener(selectedCount -> {
@@ -428,6 +503,8 @@ public class PhaseBalanceActivity extends AppCompatActivity
     {
         try 
         {
+            this.users = users;  // 保存用户列表
+            this.solution = solution;  // 保存优化结果
             StringBuilder stats = new StringBuilder();
             
             // 计算每相总电量和变化的用户数

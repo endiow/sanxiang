@@ -138,6 +138,7 @@ public class PhaseBalancer
         for (int j = 0; j < users.size(); j++) 
         {
             initialSolution.phases[j] = users.get(j).getCurrentPhase();
+            initialSolution.moves[j] = 0;  // 初始解没有移动
         }
         population.add(initialSolution);
         
@@ -163,24 +164,25 @@ public class PhaseBalancer
         
         // 生成其他解
         int attempts = 0;  // 尝试次数计数
-        while (population.size() < POPULATION_SIZE && attempts < POPULATION_SIZE * 3) 
+        while (population.size() < POPULATION_SIZE && attempts < POPULATION_SIZE * 2) 
         {
             attempts++;
-            
-            // 创建新解
             Solution solution = new Solution(users.size());
-            double[] phasePowers = new double[3];
             
-            // 首先复制初始解
-            for (int j = 0; j < users.size(); j++) 
+            // 复制初始解
+            for (int i = 0; i < users.size(); i++) 
             {
-                solution.phases[j] = users.get(j).getCurrentPhase();
+                solution.phases[i] = initialSolution.phases[i];
+                solution.moves[i] = 0;  // 初始化移动次数为0
             }
             
-            // 随机选择要改变的用户数量（不超过maxChangeUsers）
-            int changeCount = new Random().nextInt(maxChangeUsers + 1);
+            // 随机选择要改变的用户数量（不超过最大值）
+            int changeCount = new Random().nextInt(maxChangeUsers) + 1;
             
-            // 创建用户索引列表并打乱顺序
+            // 清空相位电量统计
+            double[] phasePowers = new double[3];
+            
+            // 随机选择要改变的用户
             List<Integer> userIndices = new ArrayList<>();
             for (int i = 0; i < users.size(); i++) 
             {
@@ -188,7 +190,6 @@ public class PhaseBalancer
             }
             Collections.shuffle(userIndices);
             
-            // 只处理前changeCount个用户
             for (int i = 0; i < changeCount; i++) 
             {
                 int userIndex = userIndices.get(i);
@@ -196,21 +197,27 @@ public class PhaseBalancer
                 
                 if (user.isPowerPhase()) 
                 {
-                    // 动力相用户只进行顺时针调整
+                    // 动力相用户可以移动多相（1-2次）
                     byte currentPhase = user.getCurrentPhase();
                     // 66%概率调整
                     if (Math.random() < 0.66) 
                     {
-                        // 顺时针调整一相
-                        solution.phases[userIndex] = (byte)(currentPhase == 3 ? 1 : currentPhase + 1);
+                        int moves = 1 + new Random().nextInt(2); // 随机移动1-2次
+                        byte newPhase = currentPhase;
+                        for (int move = 0; move < moves; move++) 
+                        {
+                            newPhase = (byte)(newPhase == 3 ? 1 : newPhase + 1);
+                        }
+                        solution.phases[userIndex] = newPhase;
+                        solution.moves[userIndex] = (byte)moves;  // 记录移动次数
                     }
                 } 
                 else 
                 {
                     // 非动力相用户随机选择相位（包括当前相位）
-                    byte currentPhase = user.getCurrentPhase();
                     byte[] possiblePhases = {1, 2, 3};
                     solution.phases[userIndex] = possiblePhases[new Random().nextInt(3)];
+                    solution.moves[userIndex] = 1;  // 普通用户移动次数为1
                 }
             }
             
@@ -497,6 +504,7 @@ public class PhaseBalancer
         {
             // 记录每个支线组的相位变化
             Map<String, Byte> groupPhaseChanges = new HashMap<>();
+            Map<String, Byte> groupMoveChanges = new HashMap<>();  // 记录支线组的移动次数
             
             for (int i = 0; i < users.size(); i++) 
             {
@@ -512,37 +520,54 @@ public class PhaseBalancer
                         if (!groupPhaseChanges.containsKey(key)) 
                         {
                             byte newPhase;
+                            byte moves = 0;
                             if (user.isPowerPhase()) 
                             {
-                                // 动力相支线组只进行顺时针调整
+                                // 动力相支线组可以移动多相（1-2次）
                                 byte currentPhase = solution.phases[i];
-                                newPhase = (byte)(currentPhase == 3 ? 1 : currentPhase + 1);
+                                moves = (byte)(1 + new Random().nextInt(2)); // 随机移动1-2次
+                                newPhase = currentPhase;
+                                for (int move = 0; move < moves; move++) 
+                                {
+                                    newPhase = (byte)(newPhase == 3 ? 1 : newPhase + 1);
+                                }
                             } 
                             else 
                             {
                                 newPhase = (byte)(1 + new Random().nextInt(3));
+                                moves = 1;  // 普通用户移动次数为1
                             }
                             groupPhaseChanges.put(key, newPhase);
+                            groupMoveChanges.put(key, moves);  // 记录支线组的移动次数
                             
-                            // 将同一支线组的所有用户改为相同相位
+                            // 将同一支线组的所有用户改为相同相位和移动次数
                             for (int index : branchGroupUserIndices.get(key)) 
                             {
                                 solution.phases[index] = newPhase;
+                                solution.moves[index] = moves;
                             }
                         }
                     } 
-                    else 
+                    else
                     {
                         // 不属于支线组的用户
                         if (user.isPowerPhase()) 
                         {
-                            // 动力相用户只进行顺时针调整
+                            // 动力相用户可以移动多相（1-2次）
                             byte currentPhase = solution.phases[i];
-                            solution.phases[i] = (byte)(currentPhase == 3 ? 1 : currentPhase + 1);
+                            byte moves = (byte)(1 + new Random().nextInt(2)); // 随机移动1-2次
+                            byte newPhase = currentPhase;
+                            for (int move = 0; move < moves; move++) 
+                            {
+                                newPhase = (byte)(newPhase == 3 ? 1 : newPhase + 1);
+                            }
+                            solution.phases[i] = newPhase;
+                            solution.moves[i] = moves;  // 记录移动次数
                         } 
                         else 
                         {
                             solution.phases[i] = (byte)(1 + new Random().nextInt(3));
+                            solution.moves[i] = 1;  // 普通用户移动次数为1
                         }
                     }
                 }
@@ -559,16 +584,19 @@ public class PhaseBalancer
     public static class Solution 
     {
         private byte[] phases;  // 每个用户的相位
+        private byte[] moves;   // 每个用户的移动次数
         private double fitness; // 适应度
         
         public Solution(int size) 
         {
             this.phases = new byte[size];
+            this.moves = new byte[size];
         }
         
         public Solution(Solution other) 
         {
             this.phases = Arrays.copyOf(other.phases, other.phases.length);
+            this.moves = Arrays.copyOf(other.moves, other.moves.length);
             this.fitness = other.fitness;
         }
 
@@ -576,6 +604,12 @@ public class PhaseBalancer
         public byte getPhase(int index) 
         {
             return phases[index];
+        }
+
+        // 获取指定索引的移动次数
+        public byte getMoves(int index) 
+        {
+            return moves[index];
         }
 
         // 获取适应度
