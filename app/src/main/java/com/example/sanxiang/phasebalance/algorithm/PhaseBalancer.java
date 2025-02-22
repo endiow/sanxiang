@@ -150,7 +150,16 @@ public class PhaseBalancer
             byte phase = initialSolution.phases[i];
             if (phase > 0) 
             {
-                initialPhasePowers[phase - 1] += user.getPower();
+                if (user.isPowerPhase()) 
+                {
+                    initialPhasePowers[0] += user.getPhaseAPower();
+                    initialPhasePowers[1] += user.getPhaseBPower();
+                    initialPhasePowers[2] += user.getPhaseCPower();
+                }
+                else 
+                {
+                    initialPhasePowers[phase - 1] += user.getPowerByPhase(user.getCurrentPhase());
+                }
             }
         }
         
@@ -228,7 +237,16 @@ public class PhaseBalancer
                 byte phase = solution.phases[j];
                 if (phase > 0) 
                 {
-                    phasePowers[phase - 1] += user.getPower();
+                    if (user.isPowerPhase()) 
+                    {
+                        phasePowers[0] += user.getPhaseAPower();
+                        phasePowers[1] += user.getPhaseBPower();
+                        phasePowers[2] += user.getPhaseCPower();
+                    }
+                    else 
+                    {
+                        phasePowers[phase - 1] += user.getPowerByPhase(user.getCurrentPhase());
+                    }
                 }
             }
             
@@ -259,7 +277,7 @@ public class PhaseBalancer
         {
             double[] phasePowers = new double[3];
             double adjustmentCost = 0.0;
-            int changedUsersCount = 0;  // 记录调整的用户数量
+            int changedUsersCount = 0;
             
             // 记录每个支线组是否需要调整
             Map<String, Boolean> groupNeedsAdjustment = new HashMap<>();
@@ -270,9 +288,8 @@ public class PhaseBalancer
                 String groupKey = entry.getKey();
                 List<Integer> indices = entry.getValue();
                 boolean needsAdjustment = false;
-                int groupChangedCount = 0;  // 记录组内实际需要调整的用户数量
+                int groupChangedCount = 0;
                 
-                // 检查支线组中实际需要调整的用户数量
                 for (int index : indices) 
                 {
                     User user = users.get(index);
@@ -286,7 +303,7 @@ public class PhaseBalancer
                 groupNeedsAdjustment.put(groupKey, needsAdjustment);
                 if (needsAdjustment) 
                 {
-                    changedUsersCount += groupChangedCount;  // 只计入实际需要调整的用户数量
+                    changedUsersCount += groupChangedCount;
                 }
             }
             
@@ -296,11 +313,9 @@ public class PhaseBalancer
             for (int i = 0; i < users.size(); i++) 
             {
                 User user = users.get(i);
-                byte currentPhase = user.getCurrentPhase();
-                if (currentPhase > 0) 
-                {
-                    currentPhasePowers[currentPhase - 1] += user.getPower();
-                }
+                currentPhasePowers[0] += user.getPhaseAPower();
+                currentPhasePowers[1] += user.getPhaseBPower();
+                currentPhasePowers[2] += user.getPhaseCPower();
             }
             
             // 计算当前的平均电量
@@ -319,27 +334,50 @@ public class PhaseBalancer
             for (int i = 0; i < users.size(); i++) 
             {
                 User user = users.get(i);
-                int phase = solution.phases[i];
+                byte newPhase = solution.phases[i];
                 String key = user.getRouteNumber() + "-" + user.getBranchNumber();
                 
-                if (phase > 0) 
+                // 根据新相位分配电量
+                if (user.isPowerPhase()) 
                 {
-                    phasePowers[phase - 1] += user.getPower();
+                    // 动力相用户：根据移动次数重新分配三相电量
+                    byte moves = solution.moves[i];
+                    if (moves > 0) 
+                    {
+                        // 移动1次：A->B, B->C, C->A
+                        // 移动2次：A->C, B->A, C->B
+                        phasePowers[0] += moves == 1 ? user.getPhaseCPower() : user.getPhaseBPower();
+                        phasePowers[1] += moves == 1 ? user.getPhaseAPower() : user.getPhaseCPower();
+                        phasePowers[2] += moves == 1 ? user.getPhaseBPower() : user.getPhaseAPower();
+                    }
+                    else 
+                    {
+                        // 不移动时保持原电量
+                        phasePowers[0] += user.getPhaseAPower();
+                        phasePowers[1] += user.getPhaseBPower();
+                        phasePowers[2] += user.getPhaseCPower();
+                    }
+                }
+                else 
+                {
+                    // 普通用户：将电量分配到新相位
+                    if (newPhase > 0) 
+                    {
+                        double power = user.getPowerByPhase(user.getCurrentPhase());
+                        phasePowers[newPhase - 1] += power;
+                    }
                 }
                 
                 // 计算调相代价
-                if (phase != user.getCurrentPhase()) 
+                if (newPhase != user.getCurrentPhase()) 
                 {
-                    // 如果用户属于支线组，且支线组需要调整
                     if (branchGroupUserIndices.containsKey(key) && groupNeedsAdjustment.get(key)) 
                     {
                         adjustmentCost += routeBranchCosts.get(key);
                     }
-                    // 如果用户不属于支线组
                     else if (!branchGroupUserIndices.containsKey(key)) 
                     {
                         adjustmentCost += routeBranchCosts.get(key);
-                        changedUsersCount++;  // 增加调整用户计数
                     }
                 }
             }
@@ -355,29 +393,26 @@ public class PhaseBalancer
                 maxDeviation = Math.max(maxDeviation, Math.abs(phasePowers[i] - avgPower));
             }
             
-            // 计算偏差改善程度（值越大表示改善越多）
+            // 计算偏差改善程度
             double deviationImprovement = (currentMaxDeviation - maxDeviation) / currentMaxDeviation;
             
-            // 计算调整用户比例（0-1之间）
+            // 计算调整用户比例
             double changeRatio = (double)changedUsersCount / users.size();
             
-            // 计算用户改变惩罚，但降低权重
+            // 计算用户改变惩罚
             double changePenalty = Math.pow(changeRatio * 2, 2) * 100;
             
-            // 如果调整后的偏差比当前偏差更大，则增加惩罚
+            // 如果调整后的偏差比当前偏差更大，增加惩罚
             if (maxDeviation > currentMaxDeviation) 
             {
                 changePenalty *= 2;
             }
             
-            // 使用改进后的适应度计算公式
-            // 1. 如果偏差有改善，提高适应度
-            // 2. 考虑调相代价
-            // 3. 考虑用户改变数量
+            // 计算适应度
             solution.fitness = 1.0 / (
-                0.6 * (maxDeviation / avgPower * 100) +  // 不平衡度（标准化为百分比）
-                0.1 * adjustmentCost +                   // 调相代价（权重降低）
-                0.3 * changePenalty                      // 用户改变惩罚（权重适中）
+                0.6 * (maxDeviation / avgPower * 100) +
+                0.1 * adjustmentCost +
+                0.3 * changePenalty
             );
             
             // 如果调整改善了平衡度，增加奖励

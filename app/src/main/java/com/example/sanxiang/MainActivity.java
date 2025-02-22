@@ -7,7 +7,7 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
-import android.view.View;
+import android.util.Log;  // 添加日志工具
 import android.widget.Button;
 import android.widget.Toast;
 import android.widget.TextView;
@@ -30,7 +30,6 @@ import com.example.sanxiang.prediction.PredictionActivity;
 import com.example.sanxiang.phasebalance.PhaseBalanceActivity;
 import com.example.sanxiang.db.DatabaseHelper;
 import com.example.sanxiang.userdata.model.UserData;
-import com.chaquo.python.PyObject;
 import com.chaquo.python.Python;
 import com.github.mikephil.charting.charts.LineChart;
 import com.github.mikephil.charting.components.XAxis;
@@ -43,18 +42,18 @@ import com.github.mikephil.charting.formatter.IndexAxisValueFormatter;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 public class MainActivity extends AppCompatActivity
 {
+    private static final String TAG = "MainActivity";  // 添加日志标签
     private static final int PERMISSION_REQUEST_CODE = 1;
+    private static final int MAX_FILE_SIZE = 10 * 1024 * 1024;  // 10MB 文件大小限制
+    
     private DatabaseHelper dbHelper;    // 数据库帮助类
     private LineChart lineChart;        // 图表视图
     private ActivityResultLauncher<Intent> filePickerLauncher; // 文件选择器结果处理器
@@ -74,9 +73,12 @@ public class MainActivity extends AppCompatActivity
 
         try
         {
+            Log.i(TAG, "正在初始化应用...");
+            
             // 初始化Python环境
             if (!Python.isStarted())
             {
+                Log.d(TAG, "正在启动Python环境");
                 Python.start(new AndroidPlatform(this));
             }
 
@@ -86,13 +88,57 @@ public class MainActivity extends AppCompatActivity
             setupButtons();
             updateChartData();
             
-            // 测试Python环境
-            //testPythonEnvironment();
+            // 初始化文件选择器结果处理器
+            filePickerLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == RESULT_OK)
+                    {
+                        Intent data = result.getData();
+                        List<Uri> uris = new ArrayList<>();
+                        
+                        if (data != null)
+                        {
+                            // 处理多选结果
+                            if (data.getClipData() != null)
+                            {
+                                ClipData clipData = data.getClipData();
+                                for (int i = 0; i < clipData.getItemCount(); i++)
+                                {
+                                    uris.add(clipData.getItemAt(i).getUri());
+                                }
+                            }
+                            // 处理单选结果
+                            else if (data.getData() != null)
+                            {
+                                uris.add(data.getData());
+                            }
+                            
+                            if (!uris.isEmpty())
+                            {
+                                // 在主线程中显示进度对话框
+                                AlertDialog progressDialog = new AlertDialog.Builder(this)
+                                    .setTitle("正在导入数据")
+                                    .setMessage("正在处理文件：0/" + uris.size())
+                                    .setCancelable(false)
+                                    .create();
+                                progressDialog.show();
+                                
+                                // 在后台线程中处理文件
+                                new Thread(() -> {
+                                    processFiles(uris, progressDialog);
+                                }).start();
+                            }
+                        }
+                    }
+                });
+            
+            Log.i(TAG, "应用初始化完成");
         }
         catch (Exception e)
         {
-            e.printStackTrace();
-            Toast.makeText(this, "初始化界面时出错：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "初始化应用出错", e);
+            Toast.makeText(this, "初始化应用出错：" + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
 
         // 启用边缘到边缘的显示效果
@@ -104,41 +150,6 @@ public class MainActivity extends AppCompatActivity
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
             return insets;
         });
-
-        // 初始化文件选择器结果处理器
-        filePickerLauncher = registerForActivityResult(
-            new ActivityResultContracts.StartActivityForResult(),
-            result -> 
-            {
-                if (result.getResultCode() == RESULT_OK)
-                {
-                    Intent data = result.getData();
-                    List<Uri> uris = new ArrayList<>();
-                    
-                    if (data != null)
-                    {
-                        // 处理多选结果
-                        if (data.getClipData() != null)
-                        {
-                            ClipData clipData = data.getClipData();
-                            for (int i = 0; i < clipData.getItemCount(); i++)
-                            {
-                                uris.add(clipData.getItemAt(i).getUri());
-                            }
-                        }
-                        // 处理单选结果
-                        else if (data.getData() != null)
-                        {
-                            uris.add(data.getData());
-                        }
-                        
-                        if (!uris.isEmpty())
-                        {
-                            handleMultipleFileSelection(uris);
-                        }
-                    }
-                }
-            });
     }
 
     @Override
@@ -218,22 +229,11 @@ public class MainActivity extends AppCompatActivity
         textView = findViewById(R.id.textView);
 
         btnImportData.setOnClickListener(v -> checkPermissionAndOpenPicker());
-        btnViewData.setOnClickListener(v -> 
-        {
-            Intent intent = new Intent(this, UserDataActivity.class);
-            startActivity(intent);
-        });
-        btnPredict.setOnClickListener(v -> 
-        {
-            Intent intent = new Intent(this, PredictionActivity.class);
-            startActivity(intent);
-        });
+        btnViewData.setOnClickListener(v -> handleViewData());
+        btnPredict.setOnClickListener(v -> handlePredictPower());
         btnAdjustPhase.setOnClickListener(v -> handleAdjustPhase());
-        
-        // 添加清空数据按钮的点击事件
         btnClearData.setOnClickListener(v -> handleClearData());
     }
-
 
     //-----------------------------------导入数据-----------------------------------
     //检查权限并打开文件选择器
@@ -271,6 +271,7 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
+    //打开文件选择器
     private void openFilePicker()
     {
         try
@@ -283,163 +284,212 @@ public class MainActivity extends AppCompatActivity
         }
         catch (Exception e)
         {
-            Toast.makeText(this, "无法打开文件选择器", Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "无法打开文件选择器", e);
+            Toast.makeText(this, "无法打开文件选择器：" + e.getMessage(), Toast.LENGTH_SHORT).show();
             e.printStackTrace();
         }
     }
 
-    //处理多选结果
-    private void handleMultipleFileSelection(List<Uri> uris)
+    //处理文件，导入数据库
+    private void processFiles(List<Uri> uris, AlertDialog progressDialog)
     {
-        if (uris == null || uris.isEmpty())
-        {
-            Toast.makeText(this, "没有选择文件", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        // 在后台线程中处理数据
+        Map<String, Map<String, List<UserData>>> dateUserGroupedData = new HashMap<>();
+        int totalFiles = uris.size();
+        int successCount = 0;
 
-        try
+        try 
         {
-            int successCount = 0;
-            int totalFiles = uris.size();
-            // 使用Map按日期和用户ID分组存储数据
-            Map<String, Map<String, List<UserData>>> dateUserGroupedData = new HashMap<>();
-
             // 读取所有文件数据
-            for (Uri uri : uris)
+            for (int fileIndex = 0; fileIndex < uris.size(); fileIndex++)
             {
+                Uri uri = uris.get(fileIndex);
                 if (uri == null) continue;
 
-                InputStream inputStream = null;
-                BufferedReader reader = null;
-                try
+                // 更新进度对话框
+                int currentFileIndex = fileIndex;
+                progressDialog.setMessage(String.format("正在处理文件：%d/%d", currentFileIndex + 1, totalFiles));
+
+                // 处理文件
+                if (processFile(uri, dateUserGroupedData))
                 {
-                    inputStream = getContentResolver().openInputStream(uri);
-                    if (inputStream == null)
-                    {
-                        Toast.makeText(this, "无法打开文件", Toast.LENGTH_SHORT).show();
-                        continue;
-                    }
-
-                    reader = new BufferedReader(new InputStreamReader(inputStream));
-                    String line;
-
-                    // 跳过标题行
-                    reader.readLine();
-
-                    while ((line = reader.readLine()) != null)
-                    {
-                        if (line.trim().isEmpty()) continue;
-
-                        try
-                        {
-                            String[] data = line.split(",");
-                            if (data.length < 9)
-                            {
-                                Toast.makeText(this, "文件格式错误：数据列数不足", Toast.LENGTH_SHORT).show();
-                                continue;
-                            }
-
-                            // 验证数据
-                            String date = data[0].trim();
-                            String userId = data[1].trim();
-                            if (date.isEmpty() || userId.isEmpty())
-                            {
-                                Toast.makeText(this, "文件格式错误：日期或用户ID为空", Toast.LENGTH_SHORT).show();
-                                continue;
-                            }
-
-                            try
-                            {
-                                // 验证电量数据是否为有效数字
-                                Double.parseDouble(data[6].trim());
-                                Double.parseDouble(data[7].trim());
-                                Double.parseDouble(data[8].trim());
-                            }
-                            catch (NumberFormatException e)
-                            {
-                                Toast.makeText(this, "文件格式错误：电量数据无效", Toast.LENGTH_SHORT).show();
-                                continue;
-                            }
-
-                            UserData userData = new UserData();
-                            userData.setDate(date);
-                            userData.setUserId(userId);
-                            userData.setUserName(data[2].trim());
-                            userData.setRouteNumber(data[3].trim());
-                            userData.setBranchNumber(data[4].trim());  // 第5列为支线编号（0表示主干线）
-                            userData.setPhase(data[5].trim());
-                            userData.setPhaseAPower(Double.parseDouble(data[6].trim()));
-                            userData.setPhaseBPower(Double.parseDouble(data[7].trim()));
-                            userData.setPhaseCPower(Double.parseDouble(data[8].trim()));
-
-                            // 按日期和用户ID分组存储数据
-                            dateUserGroupedData
-                                .computeIfAbsent(date, k -> new HashMap<>())
-                                .computeIfAbsent(userId, k -> new ArrayList<>())
-                                .add(userData);
-                        }
-                        catch (Exception e)
-                        {
-                            e.printStackTrace();
-                            Toast.makeText(this, "处理数据行时出错：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-                        }
-                    }
-
                     successCount++;
+                    Log.i(TAG, "成功导入文件：" + uri);
                 }
-                catch (Exception e)
-                {
-                    e.printStackTrace();
-                    Toast.makeText(this, "读取文件时出错：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-                }
-                finally
-                {
-                    try
-                    {
-                        if (reader != null) reader.close();
-                        if (inputStream != null) inputStream.close();
-                    }
-                    catch (Exception e)
-                    {
-                        e.printStackTrace();
-                    }
-                }
-            }
-
-            if (dateUserGroupedData.isEmpty())
-            {
-                Toast.makeText(this, "没有有效数据可以导入", Toast.LENGTH_SHORT).show();
-                return;
             }
 
             // 导入数据到数据库
-            try
-            {
-                dbHelper.importBatchData(dateUserGroupedData);
+            dbHelper.importBatchData(dateUserGroupedData);
 
-                // 显示导入结果
-                if (successCount == totalFiles)
-                {
-                    Toast.makeText(this, "所有文件导入成功", Toast.LENGTH_SHORT).show();
-                }
-                else
-                {
-                    Toast.makeText(this, String.format("成功导入 %d/%d 个文件", successCount, totalFiles), Toast.LENGTH_SHORT).show();
-                }
-
-                // 更新图表
-                updateChartData();
-            }
-            catch (Exception e)
-            {
-                e.printStackTrace();
-                Toast.makeText(this, "导入数据到数据库时出错：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-            }
+            // 返回主线程更新UI
+            int finalSuccessCount = successCount;
+            startActivity(new Intent(MainActivity.this, MainActivity.class));
+            finish();
         }
         catch (Exception e)
         {
+            Log.e(TAG, "处理文件时出错", e);
+            startActivity(new Intent(MainActivity.this, MainActivity.class));
+            finish();
+        }
+    }
+
+    private boolean processFile(Uri uri, Map<String, Map<String, List<UserData>>> dateUserGroupedData)
+    {
+        InputStream inputStream = null;
+        BufferedReader reader = null;
+
+        try
+        {
+            inputStream = getContentResolver().openInputStream(uri);
+            if (inputStream == null)
+            {
+                Log.e(TAG, "无法打开文件：" + uri);
+                return false;
+            }
+
+            // 检查文件大小
+            long fileSize = inputStream.available();
+            if (fileSize > MAX_FILE_SIZE)
+            {
+                Log.w(TAG, "文件过大：" + fileSize + " bytes");
+                return false;
+            }
+
+            // 处理文件内容
+            reader = new BufferedReader(new InputStreamReader(inputStream));
+            String line;
+            int lineCount = 0;
+
+            // 跳过标题行
+            reader.readLine();
+
+            while ((line = reader.readLine()) != null)
+            {
+                lineCount++;
+                if (line.trim().isEmpty()) continue;
+
+                try
+                {
+                    String[] data = line.split(",");
+                    if (data.length < 9)
+                    {
+                        Log.w(TAG, "数据格式错误，行 " + lineCount + "：列数不足");
+                        continue;
+                    }
+
+                    // 验证数据
+                    String date = data[0].trim();
+                    String userId = data[1].trim();
+                    if (date.isEmpty() || userId.isEmpty())
+                    {
+                        Log.w(TAG, "数据格式错误，行 " + lineCount + "：日期或用户ID为空");
+                        continue;
+                    }
+
+                    try
+                    {
+                        // 验证电量数据是否为有效数字
+                        Double.parseDouble(data[6].trim());
+                        Double.parseDouble(data[7].trim());
+                        Double.parseDouble(data[8].trim());
+                    }
+                    catch (NumberFormatException e)
+                    {
+                        Log.w(TAG, "数据格式错误，行 " + lineCount + "：电量数据无效");
+                        continue;
+                    }
+
+                    UserData userData = new UserData();
+                    userData.setDate(date);
+                    userData.setUserId(userId);
+                    userData.setUserName(data[2].trim());
+                    userData.setRouteNumber(data[3].trim());
+                    userData.setBranchNumber(data[4].trim());
+                    userData.setPhase(data[5].trim());
+                    userData.setPhaseAPower(Double.parseDouble(data[6].trim()));
+                    userData.setPhaseBPower(Double.parseDouble(data[7].trim()));
+                    userData.setPhaseCPower(Double.parseDouble(data[8].trim()));
+
+                    dateUserGroupedData
+                        .computeIfAbsent(userData.getDate(), k -> new HashMap<>())
+                        .computeIfAbsent(userData.getUserId(), k -> new ArrayList<>())
+                        .add(userData);
+                }
+                catch (Exception e)
+                {
+                    Log.e(TAG, "处理数据行时出错，行 " + lineCount, e);
+                }
+            }
+
+            return true;
+        }
+        catch (Exception e)
+        {
+            Log.e(TAG, "处理文件出错：" + uri, e);
+            return false;
+        }
+        finally
+        {
+            try
+            {
+                if (reader != null) reader.close();
+                if (inputStream != null) inputStream.close();
+            }
+            catch (Exception e)
+            {
+                Log.e(TAG, "关闭文件流时出错", e);
+            }
+        }
+    }
+
+    //-----------------------------------查看数据-----------------------------------
+    private void handleViewData() 
+    {
+        try 
+        {
+            // 检查是否有用户数据
+            List<String> userIds = dbHelper.getAllUserIds();
+            
+            if (userIds.isEmpty()) 
+            {
+                Toast.makeText(this, "请先导入用户数据", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            
+            // 启动数据查看活动
+            Intent intent = new Intent(MainActivity.this, UserDataActivity.class);
+            startActivity(intent);
+        } 
+        catch (Exception e) 
+        {
             e.printStackTrace();
-            Toast.makeText(this, "处理文件时出错：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "打开数据查看失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    //-----------------------------------预测电量-----------------------------------
+    private void handlePredictPower() 
+    {
+        try 
+        {
+            // 检查是否有用户数据
+            List<String> userIds = dbHelper.getAllUserIds();
+            
+            if (userIds.isEmpty()) 
+            {
+                Toast.makeText(this, "请先导入用户数据", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            
+            // 启动预测电量活动
+            Intent intent = new Intent(MainActivity.this, PredictionActivity.class);
+            startActivity(intent);
+        } 
+        catch (Exception e) 
+        {
+            e.printStackTrace();
+            Toast.makeText(this, "打开预测电量失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -450,7 +500,6 @@ public class MainActivity extends AppCompatActivity
         try 
         {
             // 检查是否有用户数据
-            DatabaseHelper dbHelper = new DatabaseHelper(this);
             List<String> userIds = dbHelper.getAllUserIds();
             
             if (userIds.isEmpty()) 
@@ -466,24 +515,30 @@ public class MainActivity extends AppCompatActivity
         catch (Exception e) 
         {
             e.printStackTrace();
-            Toast.makeText(this, "启动相位调整失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "打开相位调整失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
     //-----------------------------------清空数据-----------------------------------
     private void handleClearData()
     {
-        // 弹出确认对话框
         new AlertDialog.Builder(this)
             .setTitle("确认删除")
             .setMessage("确定要删除所有数据吗？此操作不可恢复！")
-            .setPositiveButton("确定", (dialog, which) -> 
-            {
-                // 执行删除操作
-                dbHelper.clearAllData();
-                // 更新图表
-                updateChartData();
-                Toast.makeText(this, "所有数据已清空", Toast.LENGTH_SHORT).show();
+            .setPositiveButton("确定", (dialog, which) -> {
+                try 
+                {
+                    Log.i(TAG, "开始清空数据");
+                    dbHelper.clearAllData();
+                    updateChartData();
+                    Toast.makeText(this, "所有数据已清空", Toast.LENGTH_SHORT).show();
+                    Log.i(TAG, "数据清空完成");
+                } 
+                catch (Exception e) 
+                {
+                    Log.e(TAG, "清空数据时出错", e);
+                    Toast.makeText(this, "清空数据失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+                }
             })
             .setNegativeButton("取消", null)
             .show();
@@ -603,6 +658,24 @@ public class MainActivity extends AppCompatActivity
         {
             e.printStackTrace();
             Toast.makeText(this, "更新图表时出错：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @Override
+    protected void onDestroy() 
+    {
+        super.onDestroy();
+        try 
+        {
+            if (dbHelper != null) 
+            {
+                dbHelper.close();
+                Log.i(TAG, "数据库连接已关闭");
+            }
+        } 
+        catch (Exception e) 
+        {
+            Log.e(TAG, "关闭数据库时出错", e);
         }
     }
 }

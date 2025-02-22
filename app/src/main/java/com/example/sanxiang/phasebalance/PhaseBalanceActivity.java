@@ -431,6 +431,9 @@ public class PhaseBalanceActivity extends AppCompatActivity
                             userData.getRouteNumber(),
                             userData.getBranchNumber(),
                             totalPower,
+                            userData.getPhaseAPower(),
+                            userData.getPhaseBPower(),
+                            userData.getPhaseCPower(),
                             currentPhase,
                             isPowerPhase
                         );
@@ -519,7 +522,36 @@ public class PhaseBalanceActivity extends AppCompatActivity
                 
                 if (newPhase > 0) 
                 {
-                    phasePowers[newPhase - 1] += user.getPower();
+                    if (user.isPowerPhase()) 
+                    {
+                        // 动力相用户：根据移动次数重新分配三相电量
+                        byte moves = solution.getMoves(i);
+                        if (moves == 1) 
+                        {
+                            // 移动1次：A->B, B->C, C->A
+                            phasePowers[0] += user.getPhaseCPower();
+                            phasePowers[1] += user.getPhaseAPower();
+                            phasePowers[2] += user.getPhaseBPower();
+                        }
+                        else if (moves == 2) 
+                        {
+                            // 移动2次：A->C, B->A, C->B
+                            phasePowers[0] += user.getPhaseBPower();
+                            phasePowers[1] += user.getPhaseCPower();
+                            phasePowers[2] += user.getPhaseAPower();
+                        }
+                        else 
+                        {
+                            // 不移动时保持原电量
+                            phasePowers[0] += user.getPhaseAPower();
+                            phasePowers[1] += user.getPhaseBPower();
+                            phasePowers[2] += user.getPhaseCPower();
+                        }
+                    }
+                    else 
+                    {
+                        phasePowers[newPhase - 1] += user.getPowerByPhase(user.getCurrentPhase());
+                    }
                 }
                 
                 if (newPhase != user.getCurrentPhase()) 

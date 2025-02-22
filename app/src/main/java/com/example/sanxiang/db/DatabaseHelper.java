@@ -481,6 +481,9 @@ public class DatabaseHelper extends SQLiteOpenHelper
                         routeNumber,
                         branchNumber,
                         totalPower,
+                        userData.getPhaseAPower(),
+                        userData.getPhaseBPower(),
+                        userData.getPhaseCPower(),
                         currentPhase,
                         isPowerPhase
                     );
@@ -696,6 +699,9 @@ public class DatabaseHelper extends SQLiteOpenHelper
             
             // 删除预测结果表中的所有数据
             db.delete(TABLE_PREDICTION, null, null);
+            
+            // 删除支线组表中的所有数据
+            db.delete(TABLE_BRANCH_GROUP, null, null);
             
             // 更新最后修改时间
             updateLastModifiedTime(db);

@@ -6,18 +6,25 @@ public class User
     private String userName;
     private String routeNumber;
     private String branchNumber;
-    private double power;
+    private double totalPower;
+    private double phaseAPower;  // A相电量
+    private double phaseBPower;  // B相电量
+    private double phaseCPower;  // C相电量
     private byte currentPhase;
     private boolean isPowerPhase;
     
-    public User(String userId, String userName, String routeNumber, String branchNumber, 
-                double power, byte currentPhase, boolean isPowerPhase) 
+    public User(String userId, String userName, String routeNumber, String branchNumber,
+                double totalPower, double phaseAPower, double phaseBPower, double phaseCPower,
+                byte currentPhase, boolean isPowerPhase) 
     {
         this.userId = userId;
         this.userName = userName;
         this.routeNumber = routeNumber;
         this.branchNumber = branchNumber;
-        this.power = power;
+        this.totalPower = totalPower;
+        this.phaseAPower = phaseAPower;
+        this.phaseBPower = phaseBPower;
+        this.phaseCPower = phaseCPower;
         this.currentPhase = currentPhase;
         this.isPowerPhase = isPowerPhase;
     }
@@ -43,9 +50,24 @@ public class User
         return branchNumber;
     }
     
-    public double getPower() 
+    public double getTotalPower() 
     {
-        return power;
+        return totalPower;
+    }
+    
+    public double getPhaseAPower() 
+    {
+        return phaseAPower;
+    }
+    
+    public double getPhaseBPower() 
+    {
+        return phaseBPower;
+    }
+    
+    public double getPhaseCPower() 
+    {
+        return phaseCPower;
     }
     
     public byte getCurrentPhase() 
@@ -56,5 +78,16 @@ public class User
     public boolean isPowerPhase() 
     {
         return isPowerPhase;
+    }
+    
+    public double getPowerByPhase(byte phase) 
+    {
+        switch(phase) 
+        {
+            case 1: return phaseAPower;
+            case 2: return phaseBPower;
+            case 3: return phaseCPower;
+            default: return 0;
+        }
     }
 } 
