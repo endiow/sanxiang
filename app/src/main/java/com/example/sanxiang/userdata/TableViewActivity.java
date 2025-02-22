@@ -30,6 +30,7 @@ public class TableViewActivity extends AppCompatActivity
     private DatabaseHelper dbHelper;    // 数据库操作类
     private RecyclerView recyclerView;  // 列表视图
     private TextView tvTitle;         // 标题
+    private TextView tvTotalCount;  // 添加总数显示控件
     private EditText etSearch;         // 搜索框
 
     private List<String> allRows = new ArrayList<>();
@@ -45,6 +46,7 @@ public class TableViewActivity extends AppCompatActivity
         dbHelper = new DatabaseHelper(this);
         recyclerView = findViewById(R.id.recyclerView);
         tvTitle = findViewById(R.id.tvTitle);
+        tvTotalCount = findViewById(R.id.tvTotalCount);  // 初始化总数显示控件
         etSearch = findViewById(R.id.etSearch);
 
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
@@ -235,6 +237,7 @@ public class TableViewActivity extends AppCompatActivity
         if (searchId == null || searchId.trim().isEmpty())
         {
             adapter.updateData(allRows);
+            updateTotalCount(allRows.size());  // 更新总数显示
             return;
         }
 
@@ -274,11 +277,13 @@ public class TableViewActivity extends AppCompatActivity
                 }
             }
             adapter.updateData(filteredList);
+            updateTotalCount(filteredList.size());  // 更新总数显示
         }
         catch (Exception e)
         {
             e.printStackTrace();
             adapter.updateData(allRows);
+            updateTotalCount(allRows.size());  // 更新总数显示
         }
     }
 
@@ -363,6 +368,14 @@ public class TableViewActivity extends AppCompatActivity
         }
     }
 
+    private void updateTotalCount(int count)
+    {
+        if (tvTotalCount != null)
+        {
+            tvTotalCount.setText(String.format("共 %d 条", count));
+        }
+    }
+
     private void displayUserInfo()
     {
         tvTitle.setText("用户信息表");
@@ -379,6 +392,7 @@ public class TableViewActivity extends AppCompatActivity
         }
 
         adapter.updateData(allRows);
+        updateTotalCount(allRows.size());  // 更新总数显示
     }
 
     private void displayTotalPower()
@@ -405,6 +419,7 @@ public class TableViewActivity extends AppCompatActivity
         }
 
         adapter.updateData(allRows);
+        updateTotalCount(allRows.size());  // 更新总数显示
     }
 
     private static class TableAdapter extends RecyclerView.Adapter<TableAdapter.ViewHolder>
@@ -435,6 +450,8 @@ public class TableViewActivity extends AppCompatActivity
         @Override
         public void onBindViewHolder(@NonNull ViewHolder holder, int position)
         {
+            // 设置索引
+            holder.tvIndex.setText(String.format("%d.", position + 1));
             holder.tvRowContent.setText(rows.get(position));
             
             if (tableType == TYPE_USER_INFO)
@@ -479,11 +496,13 @@ public class TableViewActivity extends AppCompatActivity
 
         static class ViewHolder extends RecyclerView.ViewHolder
         {
+            TextView tvIndex;  // 添加索引文本视图
             TextView tvRowContent;
 
             ViewHolder(View view)
             {
                 super(view);
+                tvIndex = view.findViewById(R.id.tvIndex);  // 初始化索引文本视图
                 tvRowContent = view.findViewById(R.id.tvRowContent);
             }
         }

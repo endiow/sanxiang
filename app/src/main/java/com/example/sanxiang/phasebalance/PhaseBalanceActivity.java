@@ -10,6 +10,7 @@ import android.text.SpannableString;
 import android.text.TextPaint;
 import android.text.Spanned;
 import android.util.Log;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.*;
 import androidx.appcompat.app.AlertDialog;
@@ -462,37 +463,53 @@ public class PhaseBalanceActivity extends AppCompatActivity
     {
         try 
         {
-            // 获取所有用户数据
-            List<User> allUsers = getAllUsers();
+            // 创建并显示进度框
+            AlertDialog progressDialog = new AlertDialog.Builder(this)
+                .setView(LayoutInflater.from(this).inflate(R.layout.dialog_progress, null))
+                .setCancelable(false)
+                .create();
+            progressDialog.show();
             
-            if (allUsers.isEmpty()) 
-            {
-                Log.d("PhaseBalanceActivity", "没有找到可优化的用户数据");
-                Toast.makeText(this, "没有可优化的用户数据，请确保已导入用户数据且存在当天的用电量记录", Toast.LENGTH_LONG).show();
-                return;
-            }
-
-            // 创建并执行遗传算法
-            try 
-            {
-                PhaseBalancer balancer = new PhaseBalancer(allUsers, branchGroups.isEmpty() ? null : branchGroups);
-                PhaseBalancer.Solution solution = balancer.optimize();
-                
-                if (solution == null) 
+            // 在后台线程中执行优化
+            new Thread(() -> {
+                try 
                 {
-                    Toast.makeText(this, "优化失败：未能找到有效解决方案", Toast.LENGTH_SHORT).show();
-                    return;
-                }
+                    // 获取所有用户数据
+                    List<User> allUsers = getAllUsers();
+                    
+                    if (allUsers.isEmpty()) 
+                    {
+                        runOnUiThread(() -> {
+                            progressDialog.dismiss();
+                            Toast.makeText(this, "没有可优化的用户数据，请确保已导入用户数据且存在当天的用电量记录", Toast.LENGTH_LONG).show();
+                        });
+                        return;
+                    }
 
-                // 显示优化结果
-                showOptimizationResult(allUsers, solution);
-            } 
-            catch (Exception e) 
-            {
-                Log.e("PhaseBalanceActivity", "优化过程出错", e);
-                e.printStackTrace();
-                Toast.makeText(this, "优化过程出错：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-            }
+                    // 创建并执行遗传算法
+                    PhaseBalancer balancer = new PhaseBalancer(allUsers, branchGroups.isEmpty() ? null : branchGroups);
+                    PhaseBalancer.Solution solution = balancer.optimize();
+                    
+                    runOnUiThread(() -> {
+                        progressDialog.dismiss();
+                        if (solution == null) 
+                        {
+                            Toast.makeText(this, "优化失败：未能找到有效解决方案", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        // 显示优化结果
+                        showOptimizationResult(allUsers, solution);
+                    });
+                } 
+                catch (Exception e) 
+                {
+                    e.printStackTrace();
+                    runOnUiThread(() -> {
+                        progressDialog.dismiss();
+                        Toast.makeText(this, "优化过程出错：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    });
+                }
+            }).start();
         } 
         catch (Exception e) 
         {
