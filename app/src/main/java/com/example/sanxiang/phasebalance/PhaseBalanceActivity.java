@@ -47,6 +47,8 @@ public class PhaseBalanceActivity extends AppCompatActivity
     private Button btnDelete;
     private List<User> users;
     private PhaseBalancer.Solution solution;
+    private PhaseBalancer phaseBalancer;  // 添加PhaseBalancer引用
+    private volatile boolean isOptimizing = false;  // 添加优化状态标志
     
     @Override
     protected void onCreate(Bundle savedInstanceState) 
@@ -227,10 +229,9 @@ public class PhaseBalanceActivity extends AppCompatActivity
         new AlertDialog.Builder(this)
             .setTitle("确认删除")
             .setMessage(String.format("确定要删除选中的 %d 个支线组吗？", selectedGroups.size()))
-            .setPositiveButton("确定", (dialog, which) -> {
-                deleteSelectedGroups(selectedGroups);
-            })
+            .setPositiveButton("确定", (dialog, which) -> deleteSelectedGroups(selectedGroups))
             .setNegativeButton("取消", null)
+            .create()
             .show();
     }
     
@@ -260,9 +261,7 @@ public class PhaseBalanceActivity extends AppCompatActivity
     
     private void showAddBranchGroupDialog() 
     {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_add_branch_group, null);
-        
         EditText etRouteNumber = dialogView.findViewById(R.id.etRouteNumber);
         EditText etBranchNumber = dialogView.findViewById(R.id.etBranchNumber);
         TextView tvUserCount = dialogView.findViewById(R.id.tvUserCount);
@@ -300,45 +299,46 @@ public class PhaseBalanceActivity extends AppCompatActivity
         etRouteNumber.addTextChangedListener(textWatcher);
         etBranchNumber.addTextChangedListener(textWatcher);
         
-        builder.setView(dialogView)
-               .setTitle("添加支线组")
-               .setPositiveButton("确定", (dialog, which) -> 
-               {
-                   String routeNumber = etRouteNumber.getText().toString();
-                   String branchNumber = etBranchNumber.getText().toString();
-                   
-                   if (!routeNumber.isEmpty() && !branchNumber.isEmpty()) 
-                   {
-                       // 检查支线组是否已存在
-                       if (dbHelper.branchGroupExists(routeNumber, branchNumber)) 
-                       {
-                           Toast.makeText(this, "该支线组已存在", Toast.LENGTH_SHORT).show();
-                           return;
-                       }
-                       
-                       // 检查数据库中是否有该支线的用户数据
-                       List<User> users = dbHelper.getUsersByRouteBranch(routeNumber, branchNumber);
-                       if (users.isEmpty()) 
-                       {
-                           Toast.makeText(this, "未找到该支线的用户数据", Toast.LENGTH_SHORT).show();
-                           return;
-                       }
-                       
-                       // 添加支线组到数据库
-                       if (dbHelper.addBranchGroup(routeNumber, branchNumber)) 
-                       {
-                           // 重新加载支线组数据
-                           loadBranchGroups();
-                           Toast.makeText(this, String.format("支线组添加成功，包含%d个用户", users.size()), Toast.LENGTH_SHORT).show();
-                       } 
-                       else 
-                       {
-                           Toast.makeText(this, "添加支线组失败", Toast.LENGTH_SHORT).show();
-                       }
-                   }
-               })
-               .setNegativeButton("取消", null)
-               .show();
+        new AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setTitle("添加支线组")
+            .setPositiveButton("确定", (dialog, which) -> {
+                String routeNumber = etRouteNumber.getText().toString();
+                String branchNumber = etBranchNumber.getText().toString();
+                
+                if (!routeNumber.isEmpty() && !branchNumber.isEmpty()) 
+                {
+                    // 检查支线组是否已存在
+                    if (dbHelper.branchGroupExists(routeNumber, branchNumber)) 
+                    {
+                        Toast.makeText(this, "该支线组已存在", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    
+                    // 检查数据库中是否有该支线的用户数据
+                    List<User> users = dbHelper.getUsersByRouteBranch(routeNumber, branchNumber);
+                    if (users.isEmpty()) 
+                    {
+                        Toast.makeText(this, "未找到该支线的用户数据", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    
+                    // 添加支线组到数据库
+                    if (dbHelper.addBranchGroup(routeNumber, branchNumber)) 
+                    {
+                        // 重新加载支线组数据
+                        loadBranchGroups();
+                        Toast.makeText(this, String.format("支线组添加成功，包含%d个用户", users.size()), Toast.LENGTH_SHORT).show();
+                    } 
+                    else 
+                    {
+                        Toast.makeText(this, "添加支线组失败", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            })
+            .setNegativeButton("取消", null)
+            .create()
+            .show();
     }
     
     private void loadBranchGroups() 
@@ -464,16 +464,39 @@ public class PhaseBalanceActivity extends AppCompatActivity
         try 
         {
             // 创建并显示进度框
+            View progressView = LayoutInflater.from(this).inflate(R.layout.dialog_progress, null);
             AlertDialog progressDialog = new AlertDialog.Builder(this)
-                .setView(LayoutInflater.from(this).inflate(R.layout.dialog_progress, null))
-                .setCancelable(false)
+                .setView(progressView)
+                .setCancelable(true)
+                .setNegativeButton("终止", (dialog, which) -> {
+                    if (isOptimizing && phaseBalancer != null) 
+                    {
+                        phaseBalancer.terminate();
+                    }
+                })
                 .create();
+            
+            // 设置返回键和点击外部不关闭对话框
+            progressDialog.setCanceledOnTouchOutside(false);
+            progressDialog.setOnKeyListener((dialog, keyCode, event) -> {
+                if (keyCode == android.view.KeyEvent.KEYCODE_BACK) 
+                {
+                    if (isOptimizing && phaseBalancer != null) 
+                    {
+                        phaseBalancer.terminate();  // 终止优化
+                        return true;  // 消费返回键事件
+                    }
+                }
+                return false;
+            });
+            
             progressDialog.show();
             
             // 在后台线程中执行优化
             new Thread(() -> {
                 try 
                 {
+                    isOptimizing = true;
                     // 获取所有用户数据
                     List<User> allUsers = getAllUsers();
                     
@@ -487,14 +510,15 @@ public class PhaseBalanceActivity extends AppCompatActivity
                     }
 
                     // 创建并执行遗传算法
-                    PhaseBalancer balancer = new PhaseBalancer(allUsers, branchGroups.isEmpty() ? null : branchGroups);
-                    PhaseBalancer.Solution solution = balancer.optimize();
+                    phaseBalancer = new PhaseBalancer(allUsers, branchGroups.isEmpty() ? null : branchGroups);
+                    phaseBalancer.reset();  // 重置终止标志
+                    PhaseBalancer.Solution solution = phaseBalancer.optimize();
                     
                     runOnUiThread(() -> {
                         progressDialog.dismiss();
                         if (solution == null) 
                         {
-                            Toast.makeText(this, "优化失败：未能找到有效解决方案", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(this, "优化已终止", Toast.LENGTH_SHORT).show();
                             return;
                         }
                         // 显示优化结果
@@ -509,11 +533,15 @@ public class PhaseBalanceActivity extends AppCompatActivity
                         Toast.makeText(this, "优化过程出错：" + e.getMessage(), Toast.LENGTH_SHORT).show();
                     });
                 }
+                finally 
+                {
+                    isOptimizing = false;
+                    phaseBalancer = null;  // 清除引用
+                }
             }).start();
         } 
         catch (Exception e) 
         {
-            Log.e("PhaseBalanceActivity", "优化相位失败", e);
             e.printStackTrace();
             Toast.makeText(this, "优化相位失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
@@ -675,7 +703,13 @@ public class PhaseBalanceActivity extends AppCompatActivity
         {
             // 如果在选择模式，则退出选择模式
             exitSelectionMode();
-        } 
+        }
+        else if (isOptimizing && phaseBalancer != null) 
+        {
+            // 如果正在优化，终止优化
+            phaseBalancer.terminate();
+            Toast.makeText(this, "正在终止优化...", Toast.LENGTH_SHORT).show();
+        }
         else 
         {
             // 否则执行默认的返回操作
