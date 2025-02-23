@@ -18,6 +18,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.cardview.widget.CardView;
+
+import com.example.sanxiang.util.UnbalanceCalculator;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import com.example.sanxiang.R;
@@ -518,11 +520,13 @@ public class PhaseBalanceActivity extends AppCompatActivity
                         progressDialog.dismiss();
                         if (solution == null) 
                         {
-                            Toast.makeText(this, "优化已终止", Toast.LENGTH_SHORT).show();
-                            return;
+                            Toast.makeText(this, "优化失败，请重试优化", Toast.LENGTH_LONG).show();
                         }
-                        // 显示优化结果
-                        showOptimizationResult(allUsers, solution);
+                        else 
+                        {
+                            // 只有在优化成功时才显示结果
+                            showOptimizationResult(allUsers, solution);
+                        }
                     });
                 } 
                 catch (Exception e) 
@@ -618,18 +622,12 @@ public class PhaseBalanceActivity extends AppCompatActivity
                 "C相：%.2f\n\n",
                 phasePowers[0], phasePowers[1], phasePowers[2]));
             
-            double maxPower = Math.max(Math.max(phasePowers[0], phasePowers[1]), phasePowers[2]);
-            double minPower = Math.min(Math.min(phasePowers[0], phasePowers[1]), phasePowers[2]);
-            
-            if (maxPower > 0) 
-            {
-                double unbalanceRate = ((maxPower - minPower) / maxPower) * 100;
-                stats.append(String.format("三相不平衡度：%.2f%%", unbalanceRate));
-            } 
-            else 
-            {
-                stats.append("三相不平衡度：0.00%");
-            }
+            // 使用UnbalanceCalculator计算不平衡度
+            double unbalanceRate = UnbalanceCalculator.calculateUnbalanceRate(
+                phasePowers[0], phasePowers[1], phasePowers[2]
+            );
+            String status = UnbalanceCalculator.getUnbalanceStatus(unbalanceRate);
+            stats.append(String.format("三相不平衡度：%.2f%% (%s)", unbalanceRate, status));
             
             // 设置统计信息
             tvResultStats.setText(stats.toString());

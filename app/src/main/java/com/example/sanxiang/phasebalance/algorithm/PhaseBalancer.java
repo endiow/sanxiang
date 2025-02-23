@@ -17,6 +17,7 @@ public class PhaseBalancer
     private static final double CROSSOVER_RATE = 0.6;    // 交叉率60%
     private static final double BASE_MAX_CHANGE_RATIO = 0.15;  // 基础最大调整用户比例15%
     private static final double MAX_ACCEPTABLE_CHANGE_RATIO = 0.40;  // 最大可接受调整比例40%
+    private static final double GROUP_EXCHANGE_THRESHOLD = 0.7; // 支线组交换阈值：70%
     
     // 规模相关参数
     private static final int MIN_POPULATION_SIZE = 100;         // 最小种群大小
@@ -48,8 +49,85 @@ public class PhaseBalancer
         initializeRouteBranchCosts();
         initializeBranchGroupIndices();
     }
-    
-    // 主要优化方法
+
+    // 初始化支线调相代价
+    private void initializeRouteBranchCosts()
+    {
+        // 首先根据支线信息设置基础调相代价
+        Map<String, List<User>> branchUsers = new HashMap<>();
+        Map<String, List<User>> routeUsers = new HashMap<>();  // 按回路分组用户
+
+        // 按支线和回路分组用户
+        for (int i = 0; i < users.size(); i++)
+        {
+            User user = users.get(i);
+            String branchKey = user.getRouteNumber() + "-" + user.getBranchNumber();
+            String routeKey = user.getRouteNumber();
+            branchUsers.computeIfAbsent(branchKey, k -> new ArrayList<>()).add(user);
+            routeUsers.computeIfAbsent(routeKey, k -> new ArrayList<>()).add(user);
+        }
+
+        // 设置调相代价：
+        // 1. 同一支线上的用户：0.6
+        // 2. 同一回路不同支线的用户：1.0
+        // 3. 不同回路的用户：1.5
+        for (User user : users)
+        {
+            String branchKey = user.getRouteNumber() + "-" + user.getBranchNumber();
+            String routeKey = user.getRouteNumber();
+            int usersInBranch = branchUsers.get(branchKey).size();
+            int usersInRoute = routeUsers.get(routeKey).size();
+
+            if (usersInBranch > 1)
+            {
+                // 同一支线上有多个用户，设置较小的调相代价
+                routeBranchCosts.put(branchKey, 0.6);
+            }
+            else if (usersInRoute > 1)
+            {
+                // 同一回路但不同支线，设置中等调相代价
+                routeBranchCosts.put(branchKey, 1.0);
+            }
+            else
+            {
+                // 不同回路，设置较高的调相代价
+                routeBranchCosts.put(branchKey, 1.5);
+            }
+        }
+    }
+
+    //初始化支线组索引
+    private void initializeBranchGroupIndices()
+    {
+        if (branchGroups != null && !branchGroups.isEmpty())
+        {
+            // 为每个支线组创建用户索引列表
+            for (BranchGroup group : branchGroups)
+            {
+                String groupKey = group.getRouteNumber() + "-" + group.getBranchNumber();
+                List<Integer> indices = new ArrayList<>();
+
+                // 找出属于该支线组的用户索引
+                for (int i = 0; i < users.size(); i++)
+                {
+                    User user = users.get(i);
+                    if (user.getRouteNumber().equals(group.getRouteNumber()) &&
+                            user.getBranchNumber().equals(group.getBranchNumber()))
+                    {
+                        indices.add(i);
+                    }
+                }
+
+                if (!indices.isEmpty())
+                {
+                    branchGroupUserIndices.put(groupKey, indices);
+                }
+            }
+        }
+    }
+
+
+    //---------------------------------优化主函数---------------------------------
     public Solution optimize() 
     {
         try 
@@ -68,22 +146,30 @@ public class PhaseBalancer
             int totalAttempts = 0;  // 总尝试次数
             int maxTotalAttempts = OPTIMIZATION_TIMES * MAX_RETRY_TIMES;  // 最大总尝试次数
             
+            // 记录全局最优解的适应度
+            double globalBestFitness = Double.POSITIVE_INFINITY;
+            
             while (validSolutions.size() < 10 && totalAttempts < maxTotalAttempts && !isTerminated) 
             {
                 totalAttempts++;
                 
                 // 初始化种群
                 List<Solution> population = initializePopulation(populationSize);
+                // 检查初始化是否成功
+                if (population == null) 
+                {
+                    continue; 
+                }
                 Solution bestSolution = null;
                 double bestFitness = Double.POSITIVE_INFINITY;
                 
                 // 迭代优化
                 for (int i = 0; !isTerminated && i < generations; i++) 
                 {
-                    calculateFitness(population);
-                    List<Solution> selected = selection(population);
-                    List<Solution> offspring = crossover(selected);
-                    mutation(offspring);
+                    calculateFitness(population);    //计算适应度
+                    List<Solution> selected = selection(population);  //选择
+                    List<Solution> offspring = crossover(selected);  //交叉
+                    mutation(offspring);  //变异
                     
                     // 对新解进行修复
                     for (Solution solution : offspring) 
@@ -100,24 +186,51 @@ public class PhaseBalancer
                     {
                         bestSolution = new Solution(currentBest);
                         bestFitness = currentBest.getFitness();
-                        localSearch(bestSolution);
+                        localSearch(bestSolution);  //局部搜索
                     }
                 }
                 
                 if (bestSolution != null) 
                 {
-                    double[] metrics = calculateSolutionMetrics(bestSolution);
-                    double unbalanceRate = metrics[0];
+                    // 计算最终适应度
+                    calculateFitness(Arrays.asList(bestSolution));
                     
-                    if (unbalanceRate < 15.0) 
+                    // 判断是否为有效解
+                    if (bestSolution.getUnbalanceRate() < MAX_ACCEPTABLE_UNBALANCE) 
                     {
-                        validSolutions.add(bestSolution);
+                        // 对于小于15%的解，直接加入或替换
+                        if (validSolutions.size() < 10) 
+                        {
+                            validSolutions.add(bestSolution);
+                        }
+                        else 
+                        {
+                            // 找出现有解中适应度最大的（最差的）解
+                            Solution worstSolution = Collections.max(validSolutions, 
+                                Comparator.comparingDouble(s -> s.fitness));
+                            
+                            // 如果新解比最差解好，则替换
+                            if (bestSolution.getFitness() < worstSolution.getFitness()) 
+                            {
+                                validSolutions.remove(worstSolution);
+                                validSolutions.add(bestSolution);
+                            }
+                        }
                     }
                 }
             }
             
-            return !validSolutions.isEmpty() ? 
-                Collections.min(validSolutions, Comparator.comparingDouble(s -> s.fitness)) : null;
+            // 修改返回逻辑：只返回不平衡度小于15%的最优解
+            if (!validSolutions.isEmpty()) 
+            {
+                Solution bestSolution = Collections.min(validSolutions, 
+                    Comparator.comparingDouble(s -> s.fitness));
+                if (bestSolution.getUnbalanceRate() < MAX_ACCEPTABLE_UNBALANCE) 
+                {
+                    return bestSolution;
+                }
+            }
+            return null;  // 如果没有找到满足条件的解，返回null
         } 
         catch (Exception e) 
         {
@@ -125,382 +238,627 @@ public class PhaseBalancer
             return null;
         }
     }
-    
-    // 初始化方法
-    private void initializeRouteBranchCosts() 
+
+    // 获取最佳解
+    private Solution getBestSolution(List<Solution> population)
     {
-        // 首先根据支线信息设置基础调相代价
-        Map<String, List<User>> branchUsers = new HashMap<>();
-        Map<String, List<User>> routeUsers = new HashMap<>();  // 按回路分组用户
-        
-        // 按支线和回路分组用户
-        for (int i = 0; i < users.size(); i++) 
-        {
-            User user = users.get(i);
-            String branchKey = user.getRouteNumber() + "-" + user.getBranchNumber();
-            String routeKey = user.getRouteNumber();
-            branchUsers.computeIfAbsent(branchKey, k -> new ArrayList<>()).add(user);
-            routeUsers.computeIfAbsent(routeKey, k -> new ArrayList<>()).add(user);
-        }
-        
-        // 设置调相代价：
-        // 1. 同一支线上的用户：0.6
-        // 2. 同一回路不同支线的用户：1.0
-        // 3. 不同回路的用户：1.5
-        for (User user : users) 
-        {
-            String branchKey = user.getRouteNumber() + "-" + user.getBranchNumber();
-            String routeKey = user.getRouteNumber();
-            int usersInBranch = branchUsers.get(branchKey).size();
-            int usersInRoute = routeUsers.get(routeKey).size();
-            
-            if (usersInBranch > 1) 
-            {
-                // 同一支线上有多个用户，设置较小的调相代价
-                routeBranchCosts.put(branchKey, 0.6);
-            }
-            else if (usersInRoute > 1) 
-            {
-                // 同一回路但不同支线，设置中等调相代价
-                routeBranchCosts.put(branchKey, 1.0);
-            }
-            else 
-            {
-                // 不同回路，设置较高的调相代价
-                routeBranchCosts.put(branchKey, 1.5);
-            }
-        }
+        return Collections.min(population, Comparator.comparingDouble(s -> s.fitness));
     }
-    
-    private void initializeBranchGroupIndices() 
-    {
-        if (branchGroups != null && !branchGroups.isEmpty()) 
-        {
-            // 为每个支线组创建用户索引列表
-            for (BranchGroup group : branchGroups) 
-            {
-                String groupKey = group.getRouteNumber() + "-" + group.getBranchNumber();
-                List<Integer> indices = new ArrayList<>();
-                
-                // 找出属于该支线组的用户索引
-                for (int i = 0; i < users.size(); i++) 
-                {
-                    User user = users.get(i);
-                    if (user.getRouteNumber().equals(group.getRouteNumber()) && 
-                        user.getBranchNumber().equals(group.getBranchNumber())) 
-                    {
-                        indices.add(i);
-                    }
-                }
-                
-                if (!indices.isEmpty()) 
-                {
-                    branchGroupUserIndices.put(groupKey, indices);
-                }
-            }
-        }
-    }
-    
+
+    //---------------------------------初始化种群---------------------------------
     private List<Solution> initializePopulation(int populationSize) 
     {
-        List<Solution> population = new ArrayList<>();
+        List<Solution> population = null;
+        int maxRetries = 5; // 最大重试次数
+        int retryCount = 0;
         
-        // 第一个解保持所有用户的当前相位
-        Solution initialSolution = new Solution(users.size());
-        for (int j = 0; j < users.size(); j++) 
+        do 
         {
-            initialSolution.phases[j] = users.get(j).getCurrentPhase();
-            initialSolution.moves[j] = 0;  // 初始解没有移动
-        }
-        population.add(initialSolution);
-        
-        // 计算初始解的三相电量和不平衡度
-        double[] initialPhasePowers = new double[3];
-        for (int i = 0; i < users.size(); i++) 
-        {
-            User user = users.get(i);
-            byte phase = initialSolution.phases[i];
-            if (phase > 0) 
-            {
-                if (user.isPowerPhase()) 
-                {
-                    initialPhasePowers[0] += user.getPhaseAPower();
-                    initialPhasePowers[1] += user.getPhaseBPower();
-                    initialPhasePowers[2] += user.getPhaseCPower();
-                }
-                else 
-                {
-                    initialPhasePowers[phase - 1] += user.getPowerByPhase(user.getCurrentPhase());
-                }
-            }
-        }
-        
-        // 计算初始状态的不平衡度
-        double initialUnbalanceRate = UnbalanceCalculator.calculateUnbalanceRate(
-            initialPhasePowers[0], initialPhasePowers[1], initialPhasePowers[2]
-        );
-        
-        // 计算最大可改变用户数（40%）
-        int maxChangeUsers = (int)(users.size() * 0.4);
-        
-        // 生成其他解
-        int attempts = 0;  // 尝试次数计数
-        while (population.size() < populationSize && attempts < populationSize * 3) 
-        {
-            attempts++;
-            Solution solution = new Solution(users.size());
+            population = new ArrayList<>();
+            List<Solution> validSolutions = new ArrayList<>();
+            int validCount = 0;
+            int requiredValidCount = Math.max(1, (int)(populationSize * 0.3));
+            int minValidCount = Math.max(1, (int)(populationSize * 0.03)); // 最小有效解数量要求
             
-            // 复制初始解
-            for (int i = 0; i < users.size(); i++) 
-            {
-                solution.phases[i] = initialSolution.phases[i];
-                solution.moves[i] = 0;  // 初始化移动次数为0
-            }
-            
-            // 随机选择要改变的用户数量（不超过最大值）
-            int changeCount = new Random().nextInt(maxChangeUsers) + 1;
-            
-            // 清空相位电量统计
-            double[] phasePowers = new double[3];
-            
-            // 随机选择要改变的用户
-            List<Integer> userIndices = new ArrayList<>();
-            for (int i = 0; i < users.size(); i++) 
-            {
-                userIndices.add(i);
-            }
-            Collections.shuffle(userIndices);
-            
-            // 优先选择功率较大的用户进行调整
-            userIndices.sort((a, b) -> Double.compare(
-                users.get(b).getTotalPower(),
-                users.get(a).getTotalPower()
-            ));
-            
-            for (int i = 0; i < changeCount; i++) 
-            {
-                int userIndex = userIndices.get(i);
-                User user = users.get(userIndex);
-                
-                if (user.isPowerPhase()) 
-                {
-                    // 动力相用户可以移动多相（1-2次）
-                    byte currentPhase = user.getCurrentPhase();
-                    // 80%概率调整
-                    if (Math.random() < 0.8) 
-                    {
-                        int moves = 1 + new Random().nextInt(2); // 随机移动1-2次
-                        byte newPhase = currentPhase;
-                        for (int move = 0; move < moves; move++) 
-                        {
-                            newPhase = (byte)(newPhase == 3 ? 1 : newPhase + 1);
-                        }
-                        solution.phases[userIndex] = newPhase;
-                        solution.moves[userIndex] = (byte)moves;  // 记录移动次数
-                    }
-                } 
-                else 
-                {
-                    // 非动力相用户随机选择相位（排除当前相位）
-                    byte currentPhase = user.getCurrentPhase();
-                    byte[] possiblePhases = new byte[2];
-                    int idx = 0;
-                    for (byte p = 1; p <= 3; p++) 
-                    {
-                        if (p != currentPhase) 
-                        {
-                            possiblePhases[idx++] = p;
-                        }
-                    }
-                    solution.phases[userIndex] = possiblePhases[new Random().nextInt(2)];
-                    solution.moves[userIndex] = 1;  // 普通用户移动次数为1
-                }
-            }
-            
-            // 计算相位电量
+            // 第一个解保持所有用户的当前相位
+            Solution initialSolution = new Solution(users.size());
             for (int j = 0; j < users.size(); j++) 
             {
-                User user = users.get(j);
-                byte phase = solution.phases[j];
+                initialSolution.phases[j] = users.get(j).getCurrentPhase();
+                initialSolution.moves[j] = 0;  // 初始解没有移动
+            }
+            
+            // 计算初始解的三相电量和不平衡度
+            double[] initialPhasePowers = new double[3];
+            for (int i = 0; i < users.size(); i++) 
+            {
+                User user = users.get(i);
+                byte phase = initialSolution.phases[i];
                 if (phase > 0) 
                 {
                     if (user.isPowerPhase()) 
                     {
-                        phasePowers[0] += user.getPhaseAPower();
-                        phasePowers[1] += user.getPhaseBPower();
-                        phasePowers[2] += user.getPhaseCPower();
+                        initialPhasePowers[0] += user.getPhaseAPower();
+                        initialPhasePowers[1] += user.getPhaseBPower();
+                        initialPhasePowers[2] += user.getPhaseCPower();
                     }
                     else 
                     {
-                        phasePowers[phase - 1] += user.getPowerByPhase(user.getCurrentPhase());
+                        initialPhasePowers[phase - 1] += user.getPowerByPhase(user.getCurrentPhase());
                     }
                 }
             }
             
-            // 计算新解的不平衡度
-            double unbalanceRate = UnbalanceCalculator.calculateUnbalanceRate(
-                phasePowers[0], phasePowers[1], phasePowers[2]
+            // 计算初始状态的不平衡度
+            double initialUnbalanceRate = UnbalanceCalculator.calculateUnbalanceRate(
+                initialPhasePowers[0], initialPhasePowers[1], initialPhasePowers[2]
             );
-            
-            // 放宽接受条件：允许比初始解略差的解
-            if (unbalanceRate <= initialUnbalanceRate * 1.2) 
+
+            // 根据初始不平衡度设置接受阈值
+            double acceptanceThreshold;
+            if (initialUnbalanceRate > 40.0) 
             {
-                population.add(solution);
+                // 初始不平衡度很高，要求新解必须显著改善
+                acceptanceThreshold = initialUnbalanceRate * 0.7;  // 要求至少降低30%
+            } 
+            else if (initialUnbalanceRate > 25.0) 
+            {
+                // 初始不平衡度高，要求新解有明显改善
+                acceptanceThreshold = initialUnbalanceRate * 0.8;  // 要求至少降低20%
             }
-        }
-        
-        // 如果生成的解决方案不足，通过变异初始解来填充
-        while (population.size() < populationSize) 
-        {
-            Solution solution = new Solution(initialSolution);
-            // 随机选择1-3个用户进行相位调整
-            int changeCount = 1 + new Random().nextInt(3);
-            List<Integer> indices = new ArrayList<>();
-            for (int i = 0; i < users.size(); i++) 
+            else if (initialUnbalanceRate > 15.0) 
             {
-                indices.add(i);
+                // 初始不平衡度中等，要求新解有一定改善
+                acceptanceThreshold = initialUnbalanceRate * 0.9;  // 要求至少降低10%
             }
-            Collections.shuffle(indices);
-            
-            for (int i = 0; i < changeCount; i++) 
+            else 
             {
-                int idx = indices.get(i);
-                User user = users.get(idx);
-                if (user.isPowerPhase()) 
+                // 初始不平衡度已经较低，允许适当波动以保持多样性
+                acceptanceThreshold = Math.min(initialUnbalanceRate * 1.5, 15.0);  // 允许最多增加50%，但不超过15%
+            }
+            
+            // 计算最大可改变用户数（根据初始不平衡度动态调整）
+            int maxChangeUsers;
+            if (initialUnbalanceRate <= 15.0) 
+            {
+                // 不平衡度较小时，使用较小的调整范围
+                maxChangeUsers = (int)(users.size() * 0.2);
+            } 
+            else if (initialUnbalanceRate <= 25.0) 
+            {
+                // 不平衡度中等时，使用中等的调整范围
+                maxChangeUsers = (int)(users.size() * 0.3);
+            } 
+            else 
+            {
+                // 不平衡度较大时，使用较大的调整范围
+                maxChangeUsers = (int)(users.size() * 0.4);
+            }
+            
+            // 添加初始解并检查是否为有效解
+            if(initialUnbalanceRate < MAX_ACCEPTABLE_UNBALANCE) 
+            {
+                validCount++;
+                validSolutions.add(initialSolution);
+            }
+            population.add(initialSolution);
+            
+            // 继续生成解直到达到种群大小，同时确保有效解数量达到要求
+            while(population.size() < populationSize) 
+            {
+                Solution additionalSolution = new Solution(users.size());
+                
+                // 复制初始解
+                for (int i = 0; i < users.size(); i++) 
                 {
-                    byte moves = (byte)(1 + new Random().nextInt(2));
-                    byte newPhase = user.getCurrentPhase();
-                    for (int move = 0; move < moves; move++) 
+                    additionalSolution.phases[i] = initialSolution.phases[i];
+                    additionalSolution.moves[i] = 0;  // 初始化移动次数为0
+                }
+                
+                // 随机选择要改变的用户数量（在最小值和最大值之间）
+                int minChangeUsers = (int)(users.size() * (initialUnbalanceRate > 25.0 ? 0.1 : 0.05));
+                int changeCount = minChangeUsers + new Random().nextInt(maxChangeUsers - minChangeUsers + 1);
+                
+                // 清空相位电量统计
+                Arrays.fill(additionalSolution.phasePowers, 0.0);
+                additionalSolution.changedUsersCount = 0;
+                
+                // 构建选择单元：支线组作为整体和独立用户
+                List<Object> selectionUnits = new ArrayList<>();
+                Set<Integer> branchGroupUserSet = new HashSet<>();
+                
+                // 添加支线组作为整体单元
+                for (Map.Entry<String, List<Integer>> entry : branchGroupUserIndices.entrySet()) 
+                {
+                    selectionUnits.add(entry);
+                    branchGroupUserSet.addAll(entry.getValue());
+                }
+                
+                // 添加独立用户
+                for (int i = 0; i < users.size(); i++) 
+                {
+                    if (!branchGroupUserSet.contains(i)) 
                     {
-                        newPhase = (byte)(newPhase == 3 ? 1 : newPhase + 1);
+                        selectionUnits.add(i);
                     }
-                    solution.phases[idx] = newPhase;
-                    solution.moves[idx] = moves;
                 }
-                else 
+                
+                // 随机打乱选择单元
+                Collections.shuffle(selectionUnits);
+                
+                // 进行选择和调整
+                int remainingChanges = changeCount;
+                int currentIndex = 0;
+                
+                while (remainingChanges > 0 && currentIndex < selectionUnits.size()) 
                 {
-                    byte currentPhase = user.getCurrentPhase();
-                    byte newPhase;
-                    do 
+                    Object unit = selectionUnits.get(currentIndex++);
+                    
+                    if (unit instanceof Map.Entry) 
                     {
-                        newPhase = (byte)(1 + new Random().nextInt(3));
-                    } while (newPhase == currentPhase);
-                    solution.phases[idx] = newPhase;
-                    solution.moves[idx] = 1;
+                        // 处理支线组
+                        @SuppressWarnings("unchecked")
+                        Map.Entry<String, List<Integer>> entry = (Map.Entry<String, List<Integer>>) unit;
+                        List<Integer> groupIndices = entry.getValue();
+                        
+                        // 如果剩余配额不足以调整整个支线组，跳过
+                        if (groupIndices.size() > remainingChanges) 
+                        {
+                            continue;
+                        }
+                        
+                        // 为整个支线组选择新相位
+                        byte newPhase = (byte)(1 + new Random().nextInt(3));
+                        
+                        // 应用相位调整
+                        for (int index : groupIndices) 
+                        {
+                            User user = users.get(index);
+                            if (user.getCurrentPhase() != newPhase) 
+                            {
+                                additionalSolution.phases[index] = newPhase;
+                                additionalSolution.moves[index] = 1;
+                                additionalSolution.changedUsersCount++;
+                                remainingChanges--;
+                            }
+                        }
+                    }
+                    else 
+                    {
+                        // 处理独立用户
+                        int idx = (Integer) unit;
+                        User user = users.get(idx);
+                        
+                        if (user.isPowerPhase()) 
+                        {
+                            byte moves = (byte)(1 + new Random().nextInt(2));
+                            additionalSolution.phases[idx] = user.getCurrentPhase();  // 保持原相位不变
+                            additionalSolution.moves[idx] = moves;
+                            additionalSolution.changedUsersCount++;
+                        }
+                        else 
+                        {
+                            byte currentPhase = user.getCurrentPhase();
+                            byte newPhase;
+                            do 
+                            {
+                                newPhase = (byte)(1 + new Random().nextInt(3));
+                            } while (newPhase == currentPhase);
+                            additionalSolution.phases[idx] = newPhase;
+                            additionalSolution.moves[idx] = 1;
+                            additionalSolution.changedUsersCount++;
+                        }
+                        remainingChanges--;
+                    }
+                }
+                
+                // 计算相位电量
+                for (int j = 0; j < users.size(); j++) 
+                {
+                    User user = users.get(j);
+                    byte phase = additionalSolution.phases[j];
+                    if (phase > 0) 
+                    {
+                        if (user.isPowerPhase()) 
+                        {
+                            byte moves = additionalSolution.moves[j];
+                            if (moves == 1) 
+                            {
+                                // A->B, B->C, C->A
+                                additionalSolution.phasePowers[0] += user.getPhaseCPower();
+                                additionalSolution.phasePowers[1] += user.getPhaseAPower();
+                                additionalSolution.phasePowers[2] += user.getPhaseBPower();
+                            }
+                            else if (moves == 2) 
+                            {
+                                // A->C, B->A, C->B
+                                additionalSolution.phasePowers[0] += user.getPhaseBPower();
+                                additionalSolution.phasePowers[1] += user.getPhaseCPower();
+                                additionalSolution.phasePowers[2] += user.getPhaseAPower();
+                            }
+                            else 
+                            {
+                                // 不移动时保持原电量
+                                additionalSolution.phasePowers[0] += user.getPhaseAPower();
+                                additionalSolution.phasePowers[1] += user.getPhaseBPower();
+                                additionalSolution.phasePowers[2] += user.getPhaseCPower();
+                            }
+                        }
+                        else 
+                        {
+                            additionalSolution.phasePowers[phase - 1] += user.getPowerByPhase(user.getCurrentPhase());
+                        }
+                    }
+                }
+                
+                // 计算不平衡度
+                additionalSolution.unbalanceRate = UnbalanceCalculator.calculateUnbalanceRate(
+                    additionalSolution.phasePowers[0], 
+                    additionalSolution.phasePowers[1], 
+                    additionalSolution.phasePowers[2]
+                );
+                
+                // 计算调整比例
+                additionalSolution.changeRatio = (double) additionalSolution.changedUsersCount / users.size() * 100;
+                
+                // 计算调相代价
+                additionalSolution.adjustmentCost = calculateAdjustmentCost(additionalSolution);
+                
+                // 标记为已计算
+                additionalSolution.isCalculated = true;
+                
+                // 根据不平衡度限制接受解
+                if (additionalSolution.unbalanceRate <= acceptanceThreshold) 
+                {
+                    population.add(additionalSolution);
                 }
             }
-            population.add(solution);
+            
+            // 在返回种群之前检查有效解比例
+            int finalValidCount = 0;
+            for(Solution solution : population) 
+            {
+                if(solution.getUnbalanceRate() < MAX_ACCEPTABLE_UNBALANCE) 
+                {
+                    finalValidCount++;
+                }
+            }
+            
+            // 如果有效解比例达到3%，但未达到30%，使用轻微变异来提升有效解比例
+            if(finalValidCount >= minValidCount && finalValidCount < requiredValidCount) 
+            {
+                // 获取所有有效解和无效解
+                List<Solution> currentValidSolutions = new ArrayList<>();
+                List<Solution> allSolutions = new ArrayList<>(population);
+                
+                // 按适应度排序（从好到差）
+                Collections.sort(allSolutions, (s1, s2) -> Double.compare(s1.getFitness(), s2.getFitness()));
+                
+                // 找出所有有效解
+                for(Solution solution : allSolutions) 
+                {
+                    if(solution.getUnbalanceRate() < MAX_ACCEPTABLE_UNBALANCE) 
+                    {
+                        currentValidSolutions.add(solution);
+                    }
+                }
+                
+                // 计算还需要多少个有效解
+                int neededValidSolutions = requiredValidCount - currentValidSolutions.size();
+                int attempts = 0;
+                int maxAttempts = neededValidSolutions * 10; // 设置最大尝试次数
+                
+                while(finalValidCount < requiredValidCount && attempts < maxAttempts) 
+                {
+                    attempts++;
+                    // 随机选择一个有效解进行轻微变异
+                    Solution baseSolution = currentValidSolutions.get(new Random().nextInt(currentValidSolutions.size()));
+                    Solution newSolution = new Solution(baseSolution);
+                    
+                    // 执行轻微变异
+                    performLightMutation(newSolution);
+                    
+                    // 如果变异后的解仍然有效，替换掉一个最差的解
+                    if(newSolution.getUnbalanceRate() < MAX_ACCEPTABLE_UNBALANCE) 
+                    {
+                        // 找到适应度最差的解的索引
+                        int worstIndex = population.size() - 1;
+                        for(int i = population.size() - 1; i >= 0; i--) 
+                        {
+                            if(population.get(i).getUnbalanceRate() >= MAX_ACCEPTABLE_UNBALANCE) 
+                            {
+                                worstIndex = i;
+                                break;
+                            }
+                        }
+                        
+                        // 替换最差的解
+                        population.set(worstIndex, newSolution);
+                        finalValidCount++;
+                        currentValidSolutions.add(newSolution);
+                    }
+                }
+                
+                // 如果成功达到30%的有效解，跳出循环
+                if(finalValidCount >= requiredValidCount) 
+                {
+                    break;
+                }
+            }
+            
+            retryCount++;
+        } while(retryCount < maxRetries);
+        
+        // 如果重试次数用完仍未达标，中止优化
+        if(retryCount >= maxRetries) 
+        {
+            return null;  // 返回null表示初始化失败
         }
         
         return population;
     }
-    
-    // 遗传算法核心方法
-    private void calculateFitness(List<Solution> population) 
+
+    // 轻微变异
+    private void performLightMutation(Solution solution) 
     {
-        // 计算种群的多样性指标
-        Map<String, Integer> solutionFrequency = new HashMap<>();
-        for (Solution solution : population) 
+        // 随机选择1-2个用户进行调整
+        int mutationCount = 1 + new Random().nextInt(2);
+        Set<Integer> mutatedIndices = new HashSet<>();
+        
+        for(int i = 0; i < mutationCount; i++) 
         {
-            String key = getSolutionKey(solution);
-            solutionFrequency.merge(key, 1, Integer::sum);
+            // 随机选择一个未变异过的用户
+            int userIndex;
+            do 
+            {
+                userIndex = new Random().nextInt(users.size());
+            } while(mutatedIndices.contains(userIndex));
+            
+            mutatedIndices.add(userIndex);
+            User user = users.get(userIndex);
+            
+            if(user.isPowerPhase()) 
+            {
+                // 动力用户：改变移动次数
+                byte currentMoves = solution.moves[userIndex];
+                byte newMoves;
+                do 
+                {
+                    newMoves = (byte)(1 + new Random().nextInt(2));
+                } while(newMoves == currentMoves);
+                solution.moves[userIndex] = newMoves;
+            } 
+            else 
+            {
+                // 普通用户：改变相位
+                byte currentPhase = solution.phases[userIndex];
+                byte newPhase;
+                do 
+                {
+                    newPhase = (byte)(1 + new Random().nextInt(3));
+                } while(newPhase == currentPhase);
+                solution.phases[userIndex] = newPhase;
+                solution.moves[userIndex] = 1;
+            }
         }
         
-        for (Solution solution : population) 
+        // 重新计算相位电量
+        Arrays.fill(solution.phasePowers, 0.0);
+        for(int i = 0; i < users.size(); i++) 
         {
-            double[] phasePowers = new double[3];
-            int changedUsersCount = 0;
-            
-            // 计算三相功率和调整用户数
-            for (int i = 0; i < users.size(); i++) 
+            User user = users.get(i);
+            byte phase = solution.phases[i];
+            if(phase > 0) 
             {
-                User user = users.get(i);
-                byte newPhase = solution.phases[i];
-                
-                // 统计调整用户数
-                if (newPhase != user.getCurrentPhase()) 
-                {
-                    changedUsersCount++;
-                }
-                
-                // 计算三相功率
-                if (user.isPowerPhase()) 
+                if(user.isPowerPhase()) 
                 {
                     byte moves = solution.moves[i];
-                    if (moves == 1) 
+                    if(moves == 1) 
                     {
-                        // A->B, B->C, C->A
-                        phasePowers[0] += user.getPhaseCPower();
-                        phasePowers[1] += user.getPhaseAPower();
-                        phasePowers[2] += user.getPhaseBPower();
-                    }
-                    else if (moves == 2) 
+                        solution.phasePowers[0] += user.getPhaseCPower();
+                        solution.phasePowers[1] += user.getPhaseAPower();
+                        solution.phasePowers[2] += user.getPhaseBPower();
+                    } 
+                    else if(moves == 2) 
                     {
-                        // A->C, B->A, C->B
-                        phasePowers[0] += user.getPhaseBPower();
-                        phasePowers[1] += user.getPhaseCPower();
-                        phasePowers[2] += user.getPhaseAPower();
-                    }
+                        solution.phasePowers[0] += user.getPhaseBPower();
+                        solution.phasePowers[1] += user.getPhaseCPower();
+                        solution.phasePowers[2] += user.getPhaseAPower();
+                    } 
                     else 
                     {
-                        // 不移动时保持原电量
-                        phasePowers[0] += user.getPhaseAPower();
-                        phasePowers[1] += user.getPhaseBPower();
-                        phasePowers[2] += user.getPhaseCPower();
+                        solution.phasePowers[0] += user.getPhaseAPower();
+                        solution.phasePowers[1] += user.getPhaseBPower();
+                        solution.phasePowers[2] += user.getPhaseCPower();
                     }
-                }
-                else if (newPhase > 0) 
+                } 
+                else 
                 {
-                    // 非动力相用户直接将原电量转移到新相位
-                    phasePowers[newPhase - 1] += user.getPowerByPhase(user.getCurrentPhase());
+                    solution.phasePowers[phase - 1] += user.getPowerByPhase(user.getCurrentPhase());
                 }
             }
-            
-            // 计算不平衡度
-            double maxPower = Math.max(Math.max(phasePowers[0], phasePowers[1]), phasePowers[2]);
-            double minPower = Math.min(Math.min(phasePowers[0], phasePowers[1]), phasePowers[2]);
-            double unbalanceRate = maxPower > 0 ? ((maxPower - minPower) / maxPower) * 100 : 0;
-            
-            // 计算调整比例
-            double changeRatio = (double) changedUsersCount / users.size() * 100;
-            
-            // 计算调相代价
-            double adjustmentCost = calculateAdjustmentCost(solution);
-            // 归一化调相代价到0-100范围，使其与其他指标在同一量级
-            double normalizedAdjustmentCost = (adjustmentCost / totalPower) * 100;
-            
-            // 根据不平衡度分层计算适应度（值越小越好）
-            if (unbalanceRate > 15.0) 
+        }
+        
+        // 计算不平衡度
+        solution.unbalanceRate = UnbalanceCalculator.calculateUnbalanceRate(
+            solution.phasePowers[0], solution.phasePowers[1], solution.phasePowers[2]
+        );
+        
+        // 计算调整比例
+        solution.changedUsersCount = 0;
+        for(int i = 0; i < users.size(); i++) 
+        {
+            if(solution.moves[i] > 0) 
             {
-                // 不平衡度>15%，完全由不平衡度决定
-                solution.fitness = unbalanceRate * 1000;  // 乘以1000作为惩罚
+                solution.changedUsersCount++;
             }
-            else if (unbalanceRate > 10.0) 
+        }
+        solution.changeRatio = (double) solution.changedUsersCount / users.size() * 100;
+        
+        // 计算调相代价
+        solution.adjustmentCost = calculateAdjustmentCost(solution);
+        
+        // 标记为已计算
+        solution.isCalculated = true;
+    }
+
+    //计算调相代价
+    private double calculateAdjustmentCost(Solution solution)
+    {
+        double totalCost = 0.0;
+
+        // 如果没有支线组信息，返回0
+        if (branchGroups == null || branchGroups.isEmpty())
+        {
+            return 0.0;
+        }
+
+        // 遍历每个支线组
+        for (Map.Entry<String, List<Integer>> entry : branchGroupUserIndices.entrySet())
+        {
+            String routeBranchKey = entry.getKey();
+            List<Integer> userIndices = entry.getValue();
+
+            // 检查该支线组是否需要调整
+            boolean needsAdjustment = false;
+            double totalPowerInBranch = 0.0;
+
+            // 计算支线组中需要调整的用户的总功率
+            for (int userIndex : userIndices)
             {
-                // 不平衡度10-15%，不平衡度:调整用户数=7:3
-                solution.fitness = 0.7 * unbalanceRate + 0.3 * changeRatio + 500;  // 加500作为基础惩罚
+                User user = users.get(userIndex);
+                byte newPhase = solution.getPhase(userIndex);
+
+                if (newPhase != user.getCurrentPhase())
+                {
+                    needsAdjustment = true;
+                    totalPowerInBranch += user.getTotalPower();
+                }
             }
-            else if (unbalanceRate > 5.0) 
+
+            // 如果需要调整，计算该支线组的调整代价
+            if (needsAdjustment)
             {
-                // 不平衡度5-10%，调整用户数:调相代价=7:3
-                solution.fitness = 0.7 * changeRatio + 0.3 * normalizedAdjustmentCost + 200;  // 加200作为基础惩罚
+                Double branchCost = routeBranchCosts.get(routeBranchKey);
+                if (branchCost != null)
+                {
+                    // 调整代价 = 支线代价系数 * 调整功率占比
+                    double powerRatio = totalPowerInBranch / totalPower;
+                    totalCost += branchCost * powerRatio;
+                }
+            }
+        }
+
+        return totalCost;
+    }
+
+    //---------------------------------计算适应度---------------------------------
+    private void calculateFitness(List<Solution> population) 
+    {
+        // 计算初始不平衡度
+        double[] initialPhasePowers = new double[3];
+        for (User user : users) 
+        {
+            if (user.isPowerPhase()) 
+            {
+                initialPhasePowers[0] += user.getPhaseAPower();
+                initialPhasePowers[1] += user.getPhaseBPower();
+                initialPhasePowers[2] += user.getPhaseCPower();
             }
             else 
             {
-                // 不平衡度<=5%，完全由调相代价决定
-                solution.fitness = normalizedAdjustmentCost;
+                initialPhasePowers[user.getCurrentPhase() - 1] += user.getPowerByPhase(user.getCurrentPhase());
             }
+        }
+        
+        double initialUnbalance = UnbalanceCalculator.calculateUnbalanceRate(
+            initialPhasePowers[0], initialPhasePowers[1], initialPhasePowers[2]
+        );
+
+        // 计算改善率
+        for (Solution solution : population) 
+        {
+            double improvementRate = (initialUnbalance - solution.unbalanceRate) / initialUnbalance * 100;
+            double normalizedAdjustmentCost = (solution.adjustmentCost / totalPower) * 100;
             
-            // 计算解的多样性奖励
-            String solutionKey = getSolutionKey(solution);
-            int frequency = solutionFrequency.get(solutionKey);
-            double diversityReward = 1.0 / (1 + Math.log1p(frequency));  // 解越少见,奖励越大
-            
-            // 应用多样性奖励（减小适应度值）
-            solution.fitness *= (1.0 - 0.1 * diversityReward);  // 最多减少10%的适应度值
+            // 基础分值设置，保持合理的梯度
+            double baseFitness;
+            if (solution.unbalanceRate > MAX_ACCEPTABLE_UNBALANCE) // > 15%
+            {
+                baseFitness = 1000;  // 基础分值1000
+            }
+            else if (solution.unbalanceRate > 10.0) // 10-15%
+            {
+                baseFitness = 500;   // 基础分值500
+            }
+            else if (solution.unbalanceRate > 5.0) // 5-10%，目标区间
+            {
+                baseFitness = 100;   // 基础分值100
+            }
+            else // 0-5%
+            {
+                baseFitness = 300;   // 基础分值300
+            }
+
+            // 在基础分值上增加细节分数
+            if (solution.unbalanceRate > MAX_ACCEPTABLE_UNBALANCE) 
+            {
+                // >15%的解：基础分值1000，再加上改善率的影响(0-200)
+                solution.fitness = baseFitness + (200 - 2 * improvementRate);
+            }
+            else if (solution.unbalanceRate > 10.0) 
+            {
+                // 10-15%的解：基础分值500，再加上不平衡度、调整用户数和调相代价的影响(0-100)
+                solution.fitness = baseFitness + (
+                    0.6 * (solution.unbalanceRate - 10.0) * 20 +
+                    0.3 * solution.changeRatio +
+                    0.1 * normalizedAdjustmentCost
+                );
+            }
+            else if (solution.unbalanceRate > 5.0) 
+            {
+                // 5-10%的解：基础分值100，再加上调整用户数、调相代价和不平衡度的影响(0-50)
+                solution.fitness = baseFitness + (
+                    0.5 * solution.changeRatio * 0.5 +
+                    0.3 * normalizedAdjustmentCost * 0.5 +
+                    0.2 * (solution.unbalanceRate - 5.0) * 5
+                );
+            }
+            else 
+            {
+                // 0-5%的解：基础分值300，再加上调整用户数和调相代价的影响(0-50)
+                solution.fitness = baseFitness + (
+                    0.6 * solution.changeRatio * 0.5 +
+                    0.4 * normalizedAdjustmentCost * 0.5
+                );
+            }
         }
     }
+
+    // 获取解的唯一标识，用以记录解的重复性
+    private String getSolutionKey(Solution solution)
+    {
+        StringBuilder key = new StringBuilder();
+        for (int i = 0; i < solution.phases.length; i++)
+        {
+            User user = users.get(i);
+            if (user.isPowerPhase())
+            {
+                if (solution.moves[i] > 0)
+                {
+                    key.append(i).append(':').append("m").append(solution.moves[i]).append(';');
+                }
+            }
+            else if (solution.phases[i] != user.getCurrentPhase())
+            {
+                key.append(i).append(':').append(solution.phases[i]).append(';');
+            }
+        }
+        return key.toString();
+    }
     
+
+    //---------------------------------选择出适应度最高的30%，并使用锦标赛选择填充剩余位置---------------------------------
     private List<Solution> selection(List<Solution> population) 
     {
         try 
@@ -552,6 +910,7 @@ public class PhaseBalancer
         }
     }
     
+    //---------------------------------交叉---------------------------------
     private List<Solution> crossover(List<Solution> selected) 
     {
         List<Solution> offspring = new ArrayList<>();
@@ -563,39 +922,79 @@ public class PhaseBalancer
             
             if (Math.random() < CROSSOVER_RATE) 
             {
-                // 创建两个子代
                 Solution child1 = new Solution(parent1);
                 Solution child2 = new Solution(parent2);
                 
-                // 记录已处理的支线组
+                // 随机选择交叉点
+                int crossPoint = new Random().nextInt(users.size());
+                
+                // 创建已处理的支线组集合
                 Set<String> processedGroups = new HashSet<>();
                 
-                // 按支线组进行交叉
+                // 首先处理所有支线组
                 for (Map.Entry<String, List<Integer>> entry : branchGroupUserIndices.entrySet()) 
                 {
-                    String key = entry.getKey();
-                    if (processedGroups.contains(key)) continue;
-                    
+                    String groupKey = entry.getKey();
                     List<Integer> groupIndices = entry.getValue();
-                    if (Math.random() < 0.5) 
+                    
+                    // 计算交叉点后的用户比例
+                    int usersAfterCrossPoint = 0;
+                    for (int idx : groupIndices) 
                     {
-                        // 交换整个支线组的相位分配
-                        for (int index : groupIndices) 
+                        if (idx >= crossPoint) 
                         {
-                            byte tempPhase = child1.phases[index];
-                            byte tempMoves = child1.moves[index];
-                            
-                            child1.phases[index] = child2.phases[index];
-                            child1.moves[index] = child2.moves[index];
-                            
-                            child2.phases[index] = tempPhase;
-                            child2.moves[index] = tempMoves;
+                            usersAfterCrossPoint++;
                         }
                     }
-                    processedGroups.add(key);
+                    double ratioAfterCrossPoint = (double) usersAfterCrossPoint / groupIndices.size();
+                    
+                    if (ratioAfterCrossPoint >= GROUP_EXCHANGE_THRESHOLD) 
+                    {
+                        // 如果超过阈值，交换整个组
+                        for (int groupIndex : groupIndices) 
+                        {
+                            byte tempPhase = child1.phases[groupIndex];
+                            byte tempMoves = child1.moves[groupIndex];
+                            
+                            child1.phases[groupIndex] = child2.phases[groupIndex];
+                            child1.moves[groupIndex] = child2.moves[groupIndex];
+                            
+                            child2.phases[groupIndex] = tempPhase;
+                            child2.moves[groupIndex] = tempMoves;
+                        }
+                    }
+                    processedGroups.add(groupKey);
                 }
                 
-                // 对于超过调整比例的子代,尝试修复
+                // 然后处理交叉点后的非支线组用户
+                for (int j = crossPoint; j < users.size(); j++) 
+                {
+                    // 检查是否为非支线组用户
+                    boolean isGroupUser = false;
+                    for (List<Integer> groupIndices : branchGroupUserIndices.values()) 
+                    {
+                        if (groupIndices.contains(j)) 
+                        {
+                            isGroupUser = true;
+                            break;
+                        }
+                    }
+                    
+                    // 只交换非支线组用户
+                    if (!isGroupUser) 
+                    {
+                        byte tempPhase = child1.phases[j];
+                        byte tempMoves = child1.moves[j];
+                        
+                        child1.phases[j] = child2.phases[j];
+                        child1.moves[j] = child2.moves[j];
+                        
+                        child2.phases[j] = tempPhase;
+                        child2.moves[j] = tempMoves;
+                    }
+                }
+                
+                // 修复解
                 repairSolution(child1);
                 repairSolution(child2);
                 
@@ -609,7 +1008,6 @@ public class PhaseBalancer
             }
         }
         
-        // 如果population是奇数,保留最后一个
         if (selected.size() % 2 != 0) 
         {
             offspring.add(new Solution(selected.get(selected.size() - 1)));
@@ -617,7 +1015,8 @@ public class PhaseBalancer
         
         return offspring;
     }
-    
+
+    //---------------------------------变异---------------------------------
     private void mutation(List<Solution> offspring) 
     {
         for (Solution solution : offspring) 
@@ -649,31 +1048,137 @@ public class PhaseBalancer
             }
         }
     }
-    
-    private void performSwapMutation(Solution solution) 
+
+    //计算当前已经调整的用户数
+    private int countChangedUsers(Solution solution)
     {
-        // 获取所有已调整的用户
-        List<Integer> changedUsers = new ArrayList<>();
-        for (int i = 0; i < users.size(); i++) 
+        int count = 0;
+        for (int i = 0; i < users.size(); i++)
         {
-            if (solution.phases[i] != users.get(i).getCurrentPhase()) 
+            if (solution.moves[i] > 0)
             {
-                changedUsers.add(i);
+                count++;
+            }
+        }
+        return count;
+    }
+
+    //计算已经修改的用户的比率
+    private double getMaxChangeRatio()
+    {
+        // 计算当前三相功率
+        double[] currentPhasePowers = new double[3];
+        for (User user : users)
+        {
+            if (user.isPowerPhase())
+            {
+                currentPhasePowers[0] += user.getPhaseAPower();
+                currentPhasePowers[1] += user.getPhaseBPower();
+                currentPhasePowers[2] += user.getPhaseCPower();
+            }
+            else
+            {
+                currentPhasePowers[user.getCurrentPhase() - 1] += user.getPowerByPhase(user.getCurrentPhase());
             }
         }
         
-        if (changedUsers.size() >= 2) 
+        // 使用UnbalanceCalculator计算不平衡度
+        double currentUnbalance = UnbalanceCalculator.calculateUnbalanceRate(
+            currentPhasePowers[0], 
+            currentPhasePowers[1], 
+            currentPhasePowers[2]
+        );
+        
+        if (currentUnbalance <= 15.0) 
         {
-            // 随机选择两个已调整的用户交换相位
-            int idx1 = new Random().nextInt(changedUsers.size());
+            // 不平衡度较小时，使用较小的调整范围
+            return 0.2;  // 20%
+        } 
+        else if (currentUnbalance <= 25.0) 
+        {
+            // 不平衡度中等时，使用中等的调整范围
+            return 0.3;  // 30%
+        } 
+        else 
+        {
+            // 不平衡度较大时，使用较大的调整范围
+            return 0.4;  // 40%
+        }
+    }
+    
+    //交换变异
+    private void performSwapMutation(Solution solution) 
+    {
+        // 分别获取已调整的普通用户和动力用户
+        List<Integer> changedNormalUsers = new ArrayList<>();
+        List<Integer> changedPowerUsers = new ArrayList<>();
+        
+        for (int i = 0; i < users.size(); i++) 
+        {
+            // 跳过支线组中的用户
+            boolean isGroupUser = false;
+            for (List<Integer> groupIndices : branchGroupUserIndices.values()) 
+            {
+                if (groupIndices.contains(i)) 
+                {
+                    isGroupUser = true;
+                    break;
+                }
+            }
+            if (isGroupUser) continue;
+            
+            // 如果是已调整的用户，根据类型分别加入对应列表
+            if (solution.phases[i] != users.get(i).getCurrentPhase()) 
+            {
+                if (users.get(i).isPowerPhase()) 
+                {
+                    changedPowerUsers.add(i);
+                } 
+                else 
+                {
+                    changedNormalUsers.add(i);
+                }
+            }
+        }
+        
+        // 随机决定是变异普通用户还是动力用户
+        boolean mutatePowerUsers = new Random().nextBoolean();
+        
+        if (mutatePowerUsers && changedPowerUsers.size() >= 2) 
+        {
+            // 变异动力用户
+            int idx1 = new Random().nextInt(changedPowerUsers.size());
             int idx2;
             do 
             {
-                idx2 = new Random().nextInt(changedUsers.size());
+                idx2 = new Random().nextInt(changedPowerUsers.size());
             } while (idx2 == idx1);
             
-            int user1 = changedUsers.get(idx1);
-            int user2 = changedUsers.get(idx2);
+            int user1 = changedPowerUsers.get(idx1);
+            int user2 = changedPowerUsers.get(idx2);
+            
+            // 交换相位和移动次数
+            byte tempPhase = solution.phases[user1];
+            byte tempMoves = solution.moves[user1];
+            
+            solution.phases[user1] = solution.phases[user2];
+            solution.moves[user1] = solution.moves[user2];
+            
+            solution.phases[user2] = tempPhase;
+            solution.moves[user2] = tempMoves;
+        }
+        else if (!mutatePowerUsers && changedNormalUsers.size() >= 2) 
+        {
+            // 变异普通用户
+            int idx1 = new Random().nextInt(changedNormalUsers.size());
+            int idx2;
+            do 
+            {
+                idx2 = new Random().nextInt(changedNormalUsers.size());
+            } while (idx2 == idx1);
+            
+            int user1 = changedNormalUsers.get(idx1);
+            int user2 = changedNormalUsers.get(idx2);
             
             // 交换相位和移动次数
             byte tempPhase = solution.phases[user1];
@@ -687,23 +1192,47 @@ public class PhaseBalancer
         }
     }
     
+    //普通变异
     private void performNormalMutation(Solution solution, int currentChangedCount, int maxAllowedChanges) 
     {
         // 计算还可以调整的用户数
         int remainingChanges = maxAllowedChanges - currentChangedCount;
+        if (remainingChanges <= 0) return;
         
-        // 随机选择要变异的支线组
-        List<String> groupKeys = new ArrayList<>(branchGroupUserIndices.keySet());
-        Collections.shuffle(groupKeys);
+        // 构建变异单元：支线组作为整体和独立用户
+        List<Object> mutationUnits = new ArrayList<>();
+        Set<Integer> branchGroupUserSet = new HashSet<>();
         
-        for (String key : groupKeys) 
+        // 添加支线组作为整体单元
+        for (Map.Entry<String, List<Integer>> entry : branchGroupUserIndices.entrySet()) 
         {
-            if (remainingChanges <= 0) break;
+            mutationUnits.add(entry);
+            branchGroupUserSet.addAll(entry.getValue());
+        }
+        
+        // 添加独立用户
+        for (int i = 0; i < users.size(); i++) 
+        {
+            if (!branchGroupUserSet.contains(i)) 
+            {
+                mutationUnits.add(i);
+            }
+        }
+        
+        // 随机选择一个变异单元
+        int selectedIndex = new Random().nextInt(mutationUnits.size());
+        Object selectedUnit = mutationUnits.get(selectedIndex);
+        
+        if (selectedUnit instanceof Map.Entry) 
+        {
+            // 处理支线组
+            @SuppressWarnings("unchecked")
+            Map.Entry<String, List<Integer>> entry = (Map.Entry<String, List<Integer>>) selectedUnit;
+            List<Integer> groupIndices = entry.getValue();
             
-            List<Integer> indices = branchGroupUserIndices.get(key);
             // 检查该支线组是否已经被调整
             boolean groupChanged = false;
-            for (int index : indices) 
+            for (int index : groupIndices) 
             {
                 if (solution.phases[index] != users.get(index).getCurrentPhase()) 
                 {
@@ -712,86 +1241,237 @@ public class PhaseBalancer
                 }
             }
             
-            // 如果支线组未被调整,且随机数满足条件,则进行变异
-            if (!groupChanged && Math.random() < 0.3) 
+            // 如果支线组未被调整，则进行变异
+            if (!groupChanged && groupIndices.size() <= remainingChanges) 
             {
                 // 随机选择新相位
                 byte newPhase = (byte)(1 + new Random().nextInt(3));
-                byte moves = 1;
                 
-                // 检查是否有动力相用户
-                boolean hasPowerUser = false;
-                for (int index : indices) 
+                // 应用变异到整个支线组
+                for (int index : groupIndices) 
                 {
-                    if (users.get(index).isPowerPhase()) 
-                    {
-                        hasPowerUser = true;
-                        break;
-                    }
-                }
-                
-                if (hasPowerUser) 
-                {
-                    moves = (byte)(1 + new Random().nextInt(2));
-                }
-                
-                // 应用变异
-                for (int index : indices) 
-                {
-                    if (remainingChanges <= 0) break;
-                    
                     User user = users.get(index);
                     if (user.getCurrentPhase() != newPhase) 
                     {
                         solution.phases[index] = newPhase;
-                        solution.moves[index] = moves;
-                        remainingChanges--;
+                        solution.moves[index] = 1;
+                    }
+                }
+            }
+        }
+        else 
+        {
+            // 处理独立用户
+            int userIndex = (Integer) selectedUnit;
+            User user = users.get(userIndex);
+            
+            if (user.isPowerPhase()) 
+            {
+                // 动力用户只能改变移动次数
+                byte originalMoves = solution.moves[userIndex];
+                byte newMoves = (byte)(originalMoves == 1 ? 2 : 1);
+                solution.moves[userIndex] = newMoves;
+            }
+            else 
+            {
+                // 普通用户尝试其他可能的相位
+                for (byte newPhase = 1; newPhase <= 3; newPhase++) 
+                {
+                    if (newPhase != solution.phases[userIndex] && newPhase != users.get(userIndex).getCurrentPhase()) 
+                    {
+                        solution.phases[userIndex] = newPhase;
+                        solution.moves[userIndex] = 1;
+                        break;
                     }
                 }
             }
         }
     }
     
+    //---------------------------------修复解---------------------------------
+    private void repairSolution(Solution solution) 
+    {
+        // 检查是否超过最大调整用户数限制
+        int changedCount = countChangedUsers(solution);
+        int maxAllowedChanges = (int)(users.size() * getMaxChangeRatio());
+        
+        if (changedCount > maxAllowedChanges) 
+        {
+            // 计算当前解的适应度
+            calculateFitness(Arrays.asList(solution));
+            double baseFitness = solution.getFitness();
+            
+            // 计算每个改变用户的贡献度（基于适应度）
+            List<UserContribution> contributions = new ArrayList<>();
+            
+            for (int i = 0; i < users.size(); i++) 
+            {
+                if (solution.phases[i] != users.get(i).getCurrentPhase()) 
+                {
+                    // 临时保存原始值
+                    byte originalPhase = solution.phases[i];
+                    byte originalMoves = solution.moves[i];
+                    
+                    // 尝试恢复该用户
+                    solution.phases[i] = users.get(i).getCurrentPhase();
+                    solution.moves[i] = 0;
+                    
+                    // 计算恢复后的适应度
+                    calculateFitness(Arrays.asList(solution));
+                    double newFitness = solution.getFitness();
+                    
+                    // 计算贡献度（适应度的改变量）
+                    // 贡献度 = 原适应度 - 恢复后适应度
+                    // 贡献度为正说明该用户的调整是有益的
+                    double contribution = baseFitness - newFitness;
+                    contributions.add(new UserContribution(i, contribution));
+                    
+                    // 恢复原值，继续评估下一个用户
+                    solution.phases[i] = originalPhase;
+                    solution.moves[i] = originalMoves;
+                }
+            }
+            
+            // 按贡献排序(贡献越小的越应该被恢复)
+            Collections.sort(contributions);
+            
+            // 恢复贡献最小的用户，直到满足最大调整比例
+            for (int i = 0; i < contributions.size() - maxAllowedChanges; i++) 
+            {
+                int userIndex = contributions.get(i).userIndex;
+                solution.phases[userIndex] = users.get(userIndex).getCurrentPhase();
+                solution.moves[userIndex] = 0;
+            }
+            
+            // 重新计算最终的适应度
+            calculateFitness(Arrays.asList(solution));
+        }
+    }
+
+    //---------------------------------局部搜索---------------------------------
     private void localSearch(Solution solution) 
     {
-        // 获取当前适应度
-        double[] currentMetrics = calculateSolutionMetrics(solution);
-        double currentUnbalance = currentMetrics[0];
+        // 计算当前解的适应度
+        calculateFitness(Arrays.asList(solution));
+        double currentFitness = solution.getFitness();
         
-        // 尝试改进解
         boolean improved;
         do 
         {
             improved = false;
             
-            // 遍历所有已调整的用户
+            // 先处理支线组
+            for (Map.Entry<String, List<Integer>> entry : branchGroupUserIndices.entrySet()) 
+            {
+                List<Integer> groupIndices = entry.getValue();
+                byte originalPhase = solution.phases[groupIndices.get(0)];
+                
+                // 尝试其他相位
+                for (byte newPhase = 1; newPhase <= 3; newPhase++) 
+                {
+                    if (newPhase != originalPhase) 
+                    {
+                        // 临时保存原始值
+                        byte[] originalPhases = new byte[groupIndices.size()];
+                        byte[] originalMoves = new byte[groupIndices.size()];
+                        
+                        // 保存原始值并设置新值
+                        for (int i = 0; i < groupIndices.size(); i++) 
+                        {
+                            int userIndex = groupIndices.get(i);
+                            originalPhases[i] = solution.phases[userIndex];
+                            originalMoves[i] = solution.moves[userIndex];
+                            
+                            // 设置新相位和moves
+                            solution.phases[userIndex] = newPhase;
+                            solution.moves[userIndex] = (byte)(newPhase != users.get(userIndex).getCurrentPhase() ? 1 : 0);
+                        }
+                        
+                        // 重新计算适应度
+                        calculateFitness(Arrays.asList(solution));
+                        double newFitness = solution.getFitness();
+                        
+                        // 如果适应度变好（变小）则接受改变
+                        if (newFitness < currentFitness) 
+                        {
+                            currentFitness = newFitness;
+                            improved = true;
+                        }
+                        else 
+                        {
+                            // 恢复原值
+                            for (int i = 0; i < groupIndices.size(); i++) 
+                            {
+                                int userIndex = groupIndices.get(i);
+                                solution.phases[userIndex] = originalPhases[i];
+                                solution.moves[userIndex] = originalMoves[i];
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 处理独立用户
             for (int i = 0; i < users.size(); i++) 
             {
-                if (solution.phases[i] != users.get(i).getCurrentPhase()) 
+                // 跳过支线组用户
+                boolean isGroupUser = false;
+                for (List<Integer> groupIndices : branchGroupUserIndices.values()) 
                 {
-                    // 保存原始相位和移动次数
+                    if (groupIndices.contains(i)) 
+                    {
+                        isGroupUser = true;
+                        break;
+                    }
+                }
+                if (isGroupUser) continue;
+                
+                if (users.get(i).isPowerPhase()) 
+                {
+                    // 动力用户只能改变移动次数
+                    byte originalMoves = solution.moves[i];
+                    byte newMoves = (byte)(originalMoves == 1 ? 2 : 1);
+                    solution.moves[i] = newMoves;
+                    
+                    // 重新计算适应度
+                    calculateFitness(Arrays.asList(solution));
+                    double newFitness = solution.getFitness();
+                    
+                    if (newFitness < currentFitness) 
+                    {
+                        currentFitness = newFitness;
+                        improved = true;
+                    }
+                    else 
+                    {
+                        solution.moves[i] = originalMoves;
+                    }
+                }
+                else 
+                {
+                    // 普通用户尝试其他相位
                     byte originalPhase = solution.phases[i];
                     byte originalMoves = solution.moves[i];
                     
-                    // 尝试其他可能的相位
                     for (byte newPhase = 1; newPhase <= 3; newPhase++) 
                     {
                         if (newPhase != originalPhase && newPhase != users.get(i).getCurrentPhase()) 
                         {
                             solution.phases[i] = newPhase;
-                            solution.moves[i] = 1;
+                            solution.moves[i] = 1;  // 设置moves为1表示发生改变
                             
-                            // 计算新的不平衡度
-                            double[] newMetrics = calculateSolutionMetrics(solution);
-                            if (newMetrics[0] < currentUnbalance) 
+                            // 重新计算适应度
+                            calculateFitness(Arrays.asList(solution));
+                            double newFitness = solution.getFitness();
+                            
+                            if (newFitness < currentFitness) 
                             {
-                                currentUnbalance = newMetrics[0];
+                                currentFitness = newFitness;
                                 improved = true;
                                 break;
                             }
                             else 
                             {
-                                // 如果没有改进,恢复原始值
                                 solution.phases[i] = originalPhase;
                                 solution.moves[i] = originalMoves;
                             }
@@ -800,304 +1480,6 @@ public class PhaseBalancer
                 }
             }
         } while (improved);
-    }
-    
-    // 评估方法
-    private double[] calculateSolutionMetrics(Solution solution) 
-    {
-        double[] phasePowers = new double[3];
-        int changedUsersCount = 0;
-        
-        // 计算三相功率和调整用户数
-        for (int i = 0; i < users.size(); i++) 
-        {
-            User user = users.get(i);
-            byte newPhase = solution.phases[i];
-            
-            // 统计调整用户数
-            if (newPhase != user.getCurrentPhase()) 
-            {
-                changedUsersCount++;
-            }
-            
-            // 计算三相功率
-            if (user.isPowerPhase()) 
-            {
-                byte moves = solution.moves[i];
-                if (moves == 1) 
-                {
-                    // A->B, B->C, C->A
-                    phasePowers[0] += user.getPhaseCPower();
-                    phasePowers[1] += user.getPhaseAPower();
-                    phasePowers[2] += user.getPhaseBPower();
-                }
-                else if (moves == 2) 
-                {
-                    // A->C, B->A, C->B
-                    phasePowers[0] += user.getPhaseBPower();
-                    phasePowers[1] += user.getPhaseCPower();
-                    phasePowers[2] += user.getPhaseAPower();
-                }
-                else 
-                {
-                    // 不移动时保持原电量
-                    phasePowers[0] += user.getPhaseAPower();
-                    phasePowers[1] += user.getPhaseBPower();
-                    phasePowers[2] += user.getPhaseCPower();
-                }
-            }
-            else if (newPhase > 0) 
-            {
-                // 非动力相用户直接将原电量转移到新相位
-                phasePowers[newPhase - 1] += user.getPowerByPhase(user.getCurrentPhase());
-            }
-        }
-        
-        // 计算不平衡度
-        double maxPower = Math.max(Math.max(phasePowers[0], phasePowers[1]), phasePowers[2]);
-        double minPower = Math.min(Math.min(phasePowers[0], phasePowers[1]), phasePowers[2]);
-        double unbalanceRate = maxPower > 0 ? ((maxPower - minPower) / maxPower) * 100 : 0;
-        
-        // 计算调整比例
-        double changeRatio = (double) changedUsersCount / users.size() * 100;
-        
-        return new double[]{unbalanceRate, changeRatio};
-    }
-    
-    private double calculateAdjustmentCost(Solution solution) 
-    {
-        double totalCost = 0.0;
-        
-        // 如果没有支线组信息，返回0
-        if (branchGroups == null || branchGroups.isEmpty()) 
-        {
-            return 0.0;
-        }
-        
-        // 遍历每个支线组
-        for (Map.Entry<String, List<Integer>> entry : branchGroupUserIndices.entrySet()) 
-        {
-            String routeBranchKey = entry.getKey();
-            List<Integer> userIndices = entry.getValue();
-            
-            // 检查该支线组是否需要调整
-            boolean needsAdjustment = false;
-            double totalPowerInBranch = 0.0;
-            
-            // 计算支线组中需要调整的用户的总功率
-            for (int userIndex : userIndices) 
-            {
-                User user = users.get(userIndex);
-                byte newPhase = solution.getPhase(userIndex);
-                
-                if (newPhase != user.getCurrentPhase()) 
-                {
-                    needsAdjustment = true;
-                    totalPowerInBranch += user.getTotalPower();
-                }
-            }
-            
-            // 如果需要调整，计算该支线组的调整代价
-            if (needsAdjustment) 
-            {
-                Double branchCost = routeBranchCosts.get(routeBranchKey);
-                if (branchCost != null) 
-                {
-                    // 调整代价 = 支线代价系数 * 调整功率占比
-                    double powerRatio = totalPowerInBranch / totalPower;
-                    totalCost += branchCost * powerRatio;
-                }
-            }
-        }
-        
-        return totalCost;
-    }
-    
-    private double calculateUserContribution(Solution solution, int userIndex) 
-    {
-        double[] powersBefore = new double[3];
-        double[] powersAfter = new double[3];
-        
-        // 计算移除该用户调整前的三相功率
-        for (int i = 0; i < users.size(); i++) 
-        {
-            if (i == userIndex) continue;
-            
-            User user = users.get(i);
-            byte phase = solution.phases[i];
-            
-            if (user.isPowerPhase()) 
-            {
-                byte moves = solution.moves[i];
-                if (moves == 1) 
-                {
-                    powersBefore[0] += user.getPhaseCPower();
-                    powersBefore[1] += user.getPhaseAPower();
-                    powersBefore[2] += user.getPhaseBPower();
-                }
-                else if (moves == 2) 
-                {
-                    powersBefore[0] += user.getPhaseBPower();
-                    powersBefore[1] += user.getPhaseCPower();
-                    powersBefore[2] += user.getPhaseAPower();
-                }
-                else 
-                {
-                    powersBefore[0] += user.getPhaseAPower();
-                    powersBefore[1] += user.getPhaseBPower();
-                    powersBefore[2] += user.getPhaseCPower();
-                }
-            }
-            else if (phase > 0) 
-            {
-                powersBefore[phase - 1] += user.getPowerByPhase(user.getCurrentPhase());
-            }
-        }
-        
-        // 复制到移除后的功率数组
-        System.arraycopy(powersBefore, 0, powersAfter, 0, 3);
-        
-        // 添加该用户调整后的功率
-        User user = users.get(userIndex);
-        byte phase = solution.phases[userIndex];
-        if (user.isPowerPhase()) 
-        {
-            byte moves = solution.moves[userIndex];
-            if (moves == 1) 
-            {
-                powersAfter[0] += user.getPhaseCPower();
-                powersAfter[1] += user.getPhaseAPower();
-                powersAfter[2] += user.getPhaseBPower();
-            }
-            else if (moves == 2) 
-            {
-                powersAfter[0] += user.getPhaseBPower();
-                powersAfter[1] += user.getPhaseCPower();
-                powersAfter[2] += user.getPhaseAPower();
-            }
-        }
-        else if (phase > 0) 
-        {
-            powersAfter[phase - 1] += user.getPowerByPhase(user.getCurrentPhase());
-        }
-        
-        // 计算调整前后的不平衡度差异
-        double unbalanceBefore = UnbalanceCalculator.calculateUnbalanceRate(
-            powersBefore[0], powersBefore[1], powersBefore[2]
-        );
-        double unbalanceAfter = UnbalanceCalculator.calculateUnbalanceRate(
-            powersAfter[0], powersAfter[1], powersAfter[2]
-        );
-        
-        // 返回该用户调整对不平衡度的改善程度
-        return unbalanceBefore - unbalanceAfter;
-    }
-    
-    private double getCurrentUnbalanceRate() 
-    {
-        double[] currentPhasePowers = new double[3];
-        for (User user : users) 
-        {
-            currentPhasePowers[0] += user.getPhaseAPower();
-            currentPhasePowers[1] += user.getPhaseBPower();
-            currentPhasePowers[2] += user.getPhaseCPower();
-        }
-        
-        double maxPower = Math.max(Math.max(currentPhasePowers[0], currentPhasePowers[1]), currentPhasePowers[2]);
-        double minPower = Math.min(Math.min(currentPhasePowers[0], currentPhasePowers[1]), currentPhasePowers[2]);
-        return maxPower > 0 ? ((maxPower - minPower) / maxPower) * 100 : 0;
-    }
-    
-    // 工具方法
-    private void repairSolution(Solution solution) 
-    {
-        int changedCount = countChangedUsers(solution);
-        int maxAllowedChanges = (int)(users.size() * getMaxChangeRatio());
-        
-        if (changedCount > maxAllowedChanges) 
-        {
-            // 计算每个改变用户的不平衡度贡献
-            List<UserContribution> contributions = new ArrayList<>();
-            
-            for (int i = 0; i < users.size(); i++) 
-            {
-                if (solution.phases[i] != users.get(i).getCurrentPhase()) 
-                {
-                    double contribution = calculateUserContribution(solution, i);
-                    contributions.add(new UserContribution(i, contribution));
-                }
-            }
-            
-            // 按贡献排序(贡献越大越应该保留)
-            Collections.sort(contributions);
-            
-            // 恢复改变最少的用户,直到满足最大调整比例
-            for (int i = contributions.size() - 1; i >= maxAllowedChanges; i--) 
-            {
-                int userIndex = contributions.get(i).userIndex;
-                solution.phases[userIndex] = users.get(userIndex).getCurrentPhase();
-                solution.moves[userIndex] = 0;
-            }
-        }
-    }
-    
-    private Solution getBestSolution(List<Solution> population) 
-    {
-        return Collections.min(population, Comparator.comparingDouble(s -> s.fitness));
-    }
-    
-    private String getSolutionKey(Solution solution) 
-    {
-        StringBuilder key = new StringBuilder();
-        for (int i = 0; i < solution.phases.length; i++) 
-        {
-            if (solution.phases[i] != users.get(i).getCurrentPhase()) 
-            {
-                key.append(i).append(':').append(solution.phases[i]).append(';');
-            }
-        }
-        return key.toString();
-    }
-    
-    private int countChangedUsers(Solution solution) 
-    {
-        int count = 0;
-        for (int i = 0; i < users.size(); i++) 
-        {
-            if (solution.phases[i] != users.get(i).getCurrentPhase()) 
-            {
-                count++;
-            }
-        }
-        return count;
-    }
-    
-    private double getMaxChangeRatio() 
-    {
-        double currentUnbalance = getCurrentUnbalanceRate();
-        
-        if (currentUnbalance <= 10.0) 
-        {
-            // 不平衡度较小时，使用基础调整比例
-            return BASE_MAX_CHANGE_RATIO;
-        } 
-        else if (currentUnbalance >= 30.0) 
-        {
-            // 不平衡度很大时，使用最大可接受调整比例
-            return MAX_ACCEPTABLE_CHANGE_RATIO;
-        } 
-        else 
-        {
-            // 不平衡度在10%-30%之间时，使用指数增长
-            // 将不平衡度映射到[0,1]区间
-            double x = (currentUnbalance - 10.0) / (30.0 - 10.0);
-            // 使用指数函数：y = a * (e^(bx) - 1) / (e^b - 1)
-            // 其中a是最大增长量(0.35-0.15=0.2)，b是增长系数(取2.5)
-            double b = 2.5;  // 控制指数增长的快慢
-            double growthRange = MAX_ACCEPTABLE_CHANGE_RATIO - BASE_MAX_CHANGE_RATIO;
-            double ratio = (Math.exp(b * x) - 1) / (Math.exp(b) - 1);
-            return BASE_MAX_CHANGE_RATIO + growthRange * ratio;
-        }
     }
     
     // 控制方法
@@ -1118,10 +1500,20 @@ public class PhaseBalancer
         private byte[] moves;   // 每个用户的移动次数
         private double fitness; // 适应度
         
+        // 存储计算结果
+        private double[] phasePowers;     // 三相功率
+        private double unbalanceRate;     // 不平衡度
+        private int changedUsersCount;    // 调整用户数
+        private double changeRatio;       // 调整比例
+        private double adjustmentCost;    // 调相代价
+        private boolean isCalculated;     // 是否已计算
+        
         public Solution(int size) 
         {
             this.phases = new byte[size];
             this.moves = new byte[size];
+            this.phasePowers = new double[3];
+            this.isCalculated = false;
         }
         
         public Solution(Solution other) 
@@ -1129,6 +1521,12 @@ public class PhaseBalancer
             this.phases = Arrays.copyOf(other.phases, other.phases.length);
             this.moves = Arrays.copyOf(other.moves, other.moves.length);
             this.fitness = other.fitness;
+            this.phasePowers = Arrays.copyOf(other.phasePowers, other.phasePowers.length);
+            this.unbalanceRate = other.unbalanceRate;
+            this.changedUsersCount = other.changedUsersCount;
+            this.changeRatio = other.changeRatio;
+            this.adjustmentCost = other.adjustmentCost;
+            this.isCalculated = other.isCalculated;
         }
 
         // 获取指定索引的相位
@@ -1147,6 +1545,42 @@ public class PhaseBalancer
         public double getFitness() 
         {
             return fitness;
+        }
+        
+        // 获取不平衡度
+        public double getUnbalanceRate() 
+        {
+            return unbalanceRate;
+        }
+        
+        // 获取调整比例
+        public double getChangeRatio() 
+        {
+            return changeRatio;
+        }
+        
+        // 获取调相代价
+        public double getAdjustmentCost() 
+        {
+            return adjustmentCost;
+        }
+        
+        // 获取三相功率
+        public double[] getPhasePowers() 
+        {
+            return Arrays.copyOf(phasePowers, phasePowers.length);
+        }
+        
+        // 重置计算标志
+        public void resetCalculation() 
+        {
+            this.isCalculated = false;
+        }
+        
+        // 是否已计算
+        public boolean isCalculated() 
+        {
+            return isCalculated;
         }
     }
     
