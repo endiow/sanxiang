@@ -23,7 +23,70 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginBottom="16dp"/>
+            android:layout_marginBottom="8dp"/>
+
+        <!-- 自定义图例 -->
+        <LinearLayout
+            android:id="@+id/customLegend"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="8dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginEnd="16dp">
+                <View
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:background="#FF0000"
+                    android:layout_gravity="center_vertical"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="A相"
+                    android:textSize="12sp"
+                    android:layout_marginStart="4dp"/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginEnd="16dp">
+                <View
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:background="#00FF00"
+                    android:layout_gravity="center_vertical"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="B相"
+                    android:textSize="12sp"
+                    android:layout_marginStart="4dp"/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+                <View
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:background="#0000FF"
+                    android:layout_gravity="center_vertical"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="C相"
+                    android:textSize="12sp"
+                    android:layout_marginStart="4dp"/>
+            </LinearLayout>
+        </LinearLayout>
 
         <TextView
             android:id="@+id/tvPredictionProcess"

@@ -121,9 +121,8 @@ public class PredictionDetailActivity extends AppCompatActivity
         leftAxis.setTextSize(12f);
         lineChart.getAxisRight().setEnabled(false);
 
-        // 配置图例
-        lineChart.getLegend().setTextSize(12f);
-        lineChart.getLegend().setFormSize(12f);
+        // 禁用默认图例
+        lineChart.getLegend().setEnabled(false);
     }
 
     private void loadHistoricalData() 
@@ -135,51 +134,145 @@ public class PredictionDetailActivity extends AppCompatActivity
             return;
         }
 
+        // 判断是否为动力用户
+        boolean isPowerUser = dbHelper.isPowerUser(userId);
+
         // 准备图表数据
-        List<Entry> entriesA = new ArrayList<>();
-        List<Entry> entriesB = new ArrayList<>();
-        List<Entry> entriesC = new ArrayList<>();
         List<String> dates = new ArrayList<>();
 
-        // 注意：数据库返回的是按日期降序排序的，我们需要反转顺序来显示
-        for (int i = historicalData.size() - 1; i >= 0; i--) 
+        if (isPowerUser)
         {
-            UserData data = historicalData.get(i);
-            int position = historicalData.size() - 1 - i;  // 转换索引
-            entriesA.add(new Entry(position, (float) data.getPhaseAPower()));
-            entriesB.add(new Entry(position, (float) data.getPhaseBPower()));
-            entriesC.add(new Entry(position, (float) data.getPhaseCPower()));
-            dates.add(data.getDate());
+            // 动力用户：分别显示三相数据
+            List<Entry> entriesA = new ArrayList<>();
+            List<Entry> entriesB = new ArrayList<>();
+            List<Entry> entriesC = new ArrayList<>();
+
+            // 注意：数据库返回的是按日期降序排序的，我们需要反转顺序来显示
+            for (int i = historicalData.size() - 1; i >= 0; i--) 
+            {
+                UserData data = historicalData.get(i);
+                int position = historicalData.size() - 1 - i;  // 转换索引
+                entriesA.add(new Entry(position, (float) data.getPhaseAPower()));
+                entriesB.add(new Entry(position, (float) data.getPhaseBPower()));
+                entriesC.add(new Entry(position, (float) data.getPhaseCPower()));
+                dates.add(data.getDate());
+            }
+
+            // 添加预测点
+            int lastPosition = dates.size();
+            entriesA.add(new Entry(lastPosition, (float) predictedPhaseA));
+            entriesB.add(new Entry(lastPosition, (float) predictedPhaseB));
+            entriesC.add(new Entry(lastPosition, (float) predictedPhaseC));
+            dates.add("预测值");
+
+            // 创建数据集
+            LineDataSet dataSetA = new LineDataSet(entriesA, "");
+            dataSetA.setColor(Color.RED);
+            dataSetA.setCircleColor(Color.RED);
+            dataSetA.setDrawCircles(true);
+            dataSetA.setCircleRadius(4f);
+            dataSetA.setDrawValues(false);
+            dataSetA.setLineWidth(2f);
+
+            LineDataSet dataSetB = new LineDataSet(entriesB, "");
+            dataSetB.setColor(Color.GREEN);
+            dataSetB.setCircleColor(Color.GREEN);
+            dataSetB.setDrawCircles(true);
+            dataSetB.setCircleRadius(4f);
+            dataSetB.setDrawValues(false);
+            dataSetB.setLineWidth(2f);
+
+            LineDataSet dataSetC = new LineDataSet(entriesC, "");
+            dataSetC.setColor(Color.BLUE);
+            dataSetC.setCircleColor(Color.BLUE);
+            dataSetC.setDrawCircles(true);
+            dataSetC.setCircleRadius(4f);
+            dataSetC.setDrawValues(false);
+            dataSetC.setLineWidth(2f);
+
+            // 更新图表
+            LineData lineData = new LineData(dataSetA, dataSetB, dataSetC);
+            lineChart.setData(lineData);
         }
-
-        // 添加预测点
-        int lastPosition = dates.size();
-        entriesA.add(new Entry(lastPosition, (float) predictedPhaseA));
-        entriesB.add(new Entry(lastPosition, (float) predictedPhaseB));
-        entriesC.add(new Entry(lastPosition, (float) predictedPhaseC));
-        dates.add("预测值");
-
-        // 创建数据集
-        LineDataSet setA = new LineDataSet(entriesA, "A相");
-        setA.setColor(Color.RED);
-        setA.setCircleColor(Color.RED);
-
-        LineDataSet setB = new LineDataSet(entriesB, "B相");
-        setB.setColor(Color.GREEN);
-        setB.setCircleColor(Color.GREEN);
-
-        LineDataSet setC = new LineDataSet(entriesC, "C相");
-        setC.setColor(Color.BLUE);
-        setC.setCircleColor(Color.BLUE);
-
-        // 配置数据集
-        for (LineDataSet set : new LineDataSet[]{setA, setB, setC}) 
+        else
         {
-            set.setDrawCircles(true);
-            set.setCircleRadius(4f);
-            set.setDrawValues(false);
-            set.setLineWidth(2f);
-            set.setMode(LineDataSet.Mode.LINEAR);
+            // 非动力用户：使用单线条变色显示
+            List<Entry> entries = new ArrayList<>();
+            List<Integer> colors = new ArrayList<>();
+
+            // 注意：数据库返回的是按日期降序排序的，我们需要反转顺序来显示
+            for (int i = historicalData.size() - 1; i >= 0; i--) 
+            {
+                UserData data = historicalData.get(i);
+                int position = historicalData.size() - 1 - i;  // 转换索引
+                dates.add(data.getDate());
+
+                // 根据相位选择对应的电量值和颜色
+                float powerValue;
+                int color;
+                switch (data.getPhase().toUpperCase())
+                {
+                    case "A":
+                        powerValue = (float) data.getPhaseAPower();
+                        color = Color.RED;
+                        break;
+                    case "B":
+                        powerValue = (float) data.getPhaseBPower();
+                        color = Color.GREEN;
+                        break;
+                    case "C":
+                        powerValue = (float) data.getPhaseCPower();
+                        color = Color.BLUE;
+                        break;
+                    default:
+                        powerValue = 0f;
+                        color = Color.GRAY;
+                        break;
+                }
+                entries.add(new Entry(position, powerValue));
+                colors.add(color);
+            }
+
+            // 添加预测点
+            int lastPosition = dates.size();
+            float predictedValue;
+            int predictedColor;
+            switch (phase.toUpperCase())
+            {
+                case "A":
+                    predictedValue = (float) predictedPhaseA;
+                    predictedColor = Color.RED;
+                    break;
+                case "B":
+                    predictedValue = (float) predictedPhaseB;
+                    predictedColor = Color.GREEN;
+                    break;
+                case "C":
+                    predictedValue = (float) predictedPhaseC;
+                    predictedColor = Color.BLUE;
+                    break;
+                default:
+                    predictedValue = 0f;
+                    predictedColor = Color.GRAY;
+                    break;
+            }
+            entries.add(new Entry(lastPosition, predictedValue));
+            colors.add(predictedColor);
+            dates.add("预测值");
+
+            // 创建主数据集
+            LineDataSet dataSet = new LineDataSet(entries, "");
+            dataSet.setDrawCircles(true);
+            dataSet.setCircleRadius(4f);
+            dataSet.setDrawValues(false);
+            dataSet.setLineWidth(2f);
+            dataSet.setMode(LineDataSet.Mode.LINEAR);
+            dataSet.setColors(colors);
+            dataSet.setCircleColors(colors);
+
+            // 更新图表
+            LineData lineData = new LineData(dataSet);
+            lineChart.setData(lineData);
         }
 
         // 设置X轴标签
@@ -205,9 +298,6 @@ public class PredictionDetailActivity extends AppCompatActivity
             }
         });
 
-        // 更新图表
-        LineData lineData = new LineData(setA, setB, setC);
-        lineChart.setData(lineData);
         lineChart.invalidate();
 
         // 初始显示预测结果
