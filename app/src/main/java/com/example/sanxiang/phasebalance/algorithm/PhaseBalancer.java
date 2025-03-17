@@ -248,17 +248,16 @@ public class PhaseBalancer
     //---------------------------------初始化种群---------------------------------
     private List<Solution> initializePopulation(int populationSize) 
     {
-        List<Solution> population = null;
+        // 创建种群池，存储所有重试中的有效解
+        List<Solution> solutionPool = new ArrayList<>();
+        int requiredValidCount = Math.max(1, (int)(populationSize * 0.3)); // 期望有30%的有效解
         int maxRetries = 5; // 最大重试次数
-        int retryCount = 0;
+        List<Solution> lastPopulation = null; // 保存最后一次的种群
         
-        do 
+        // 进行多次重试，累积有效解
+        for(int retryCount = 0; retryCount < maxRetries; retryCount++) 
         {
-            population = new ArrayList<>();
-            List<Solution> validSolutions = new ArrayList<>();
-            int validCount = 0;
-            int requiredValidCount = Math.max(1, (int)(populationSize * 0.3));
-            int minValidCount = Math.max(1, (int)(populationSize * 0.03)); // 最小有效解数量要求
+            List<Solution> currentPopulation = new ArrayList<>();
             
             // 第一个解保持所有用户的当前相位
             Solution initialSolution = new Solution(users.size());
@@ -338,13 +337,13 @@ public class PhaseBalancer
             // 添加初始解并检查是否为有效解
             if(initialUnbalanceRate < MAX_ACCEPTABLE_UNBALANCE) 
             {
-                validCount++;
-                validSolutions.add(initialSolution);
+                // 初始解有效，加入种群池
+                solutionPool.add(new Solution(initialSolution));
             }
-            population.add(initialSolution);
+            currentPopulation.add(initialSolution);
             
-            // 继续生成解直到达到种群大小，同时确保有效解数量达到要求
-            while(population.size() < populationSize) 
+            // 继续生成解直到达到种群大小
+            while(currentPopulation.size() < populationSize) 
             {
                 Solution additionalSolution = new Solution(users.size());
                 
@@ -510,92 +509,107 @@ public class PhaseBalancer
                 // 根据不平衡度限制接受解
                 if (additionalSolution.unbalanceRate <= acceptanceThreshold) 
                 {
-                    population.add(additionalSolution);
-                }
-            }
-            
-            // 在返回种群之前检查有效解比例
-            int finalValidCount = 0;
-            for(Solution solution : population) 
-            {
-                if(solution.getUnbalanceRate() < MAX_ACCEPTABLE_UNBALANCE) 
-                {
-                    finalValidCount++;
-                }
-            }
-            
-            // 如果有效解比例达到3%，但未达到30%，使用轻微变异来提升有效解比例
-            if(finalValidCount >= minValidCount && finalValidCount < requiredValidCount) 
-            {
-                // 获取所有有效解和无效解
-                List<Solution> currentValidSolutions = new ArrayList<>();
-                List<Solution> allSolutions = new ArrayList<>(population);
-                
-                // 按适应度排序（从好到差）
-                Collections.sort(allSolutions, (s1, s2) -> Double.compare(s1.getFitness(), s2.getFitness()));
-                
-                // 找出所有有效解
-                for(Solution solution : allSolutions) 
-                {
-                    if(solution.getUnbalanceRate() < MAX_ACCEPTABLE_UNBALANCE) 
-                    {
-                        currentValidSolutions.add(solution);
-                    }
-                }
-                
-                // 计算还需要多少个有效解
-                int neededValidSolutions = requiredValidCount - currentValidSolutions.size();
-                int attempts = 0;
-                int maxAttempts = neededValidSolutions * 10; // 设置最大尝试次数
-                
-                while(finalValidCount < requiredValidCount && attempts < maxAttempts) 
-                {
-                    attempts++;
-                    // 随机选择一个有效解进行轻微变异
-                    Solution baseSolution = currentValidSolutions.get(new Random().nextInt(currentValidSolutions.size()));
-                    Solution newSolution = new Solution(baseSolution);
+                    currentPopulation.add(additionalSolution);
                     
-                    // 执行轻微变异
-                    performLightMutation(newSolution);
-                    
-                    // 如果变异后的解仍然有效，替换掉一个最差的解
-                    if(newSolution.getUnbalanceRate() < MAX_ACCEPTABLE_UNBALANCE) 
+                    // 如果是有效解，加入种群池
+                    if (additionalSolution.unbalanceRate < MAX_ACCEPTABLE_UNBALANCE) 
                     {
-                        // 找到适应度最差的解的索引
-                        int worstIndex = population.size() - 1;
-                        for(int i = population.size() - 1; i >= 0; i--) 
-                        {
-                            if(population.get(i).getUnbalanceRate() >= MAX_ACCEPTABLE_UNBALANCE) 
-                            {
-                                worstIndex = i;
-                                break;
-                            }
-                        }
+                        solutionPool.add(new Solution(additionalSolution));
                         
-                        // 替换最差的解
-                        population.set(worstIndex, newSolution);
-                        finalValidCount++;
-                        currentValidSolutions.add(newSolution);
+                        // 检查种群池是否已经达到30%
+                        if (solutionPool.size() >= requiredValidCount) 
+                        {
+                            // 已达到30%的要求，保存当前种群并跳出循环
+                            lastPopulation = currentPopulation;
+                            break;
+                        }
                     }
-                }
-                
-                // 如果成功达到30%的有效解，跳出循环
-                if(finalValidCount >= requiredValidCount) 
-                {
-                    break;
                 }
             }
             
-            retryCount++;
-        } while(retryCount < maxRetries);
-        
-        // 如果重试次数用完仍未达标，中止优化
-        if(retryCount >= maxRetries) 
-        {
-            return null;  // 返回null表示初始化失败
+            // 保存最后一次的种群
+            lastPopulation = currentPopulation;
+            
+            // 如果种群池已达到30%，提前结束循环
+            if (solutionPool.size() >= requiredValidCount) 
+            {
+                break;
+            }
         }
         
-        return population;
+        // 如果最终种群池中的解不足，说明5次尝试都未能满足30%的要求
+        if (solutionPool.size() < requiredValidCount) 
+        {
+            // 如果种群池中至少有1个有效解，则仍然返回解
+            if (solutionPool.size() > 0) 
+            {
+                // 填充剩余种群
+                List<Solution> resultPopulation = new ArrayList<>(solutionPool);
+                
+                // 将最后一次种群中的非有效解添加到结果种群中
+                for (Solution solution : lastPopulation) 
+                {
+                    if (solution.getUnbalanceRate() >= MAX_ACCEPTABLE_UNBALANCE) 
+                    {
+                        resultPopulation.add(solution);
+                        if (resultPopulation.size() >= populationSize) 
+                        {
+                            break;
+                        }
+                    }
+                }
+                
+                return resultPopulation;
+            }
+            
+            // 一个有效解都没有，初始化失败
+            return null;
+        }
+        
+        // 构建最终返回的种群
+        List<Solution> resultPopulation = new ArrayList<>(solutionPool);
+        
+        // 如果有效解数量已经够了，但种群大小不够，需要从最后一次的种群中添加解
+        if (resultPopulation.size() < populationSize) 
+        {
+            // 从最后一次种群中添加非有效解，直到达到种群大小
+            for (Solution solution : lastPopulation) 
+            {
+                if (solution.getUnbalanceRate() >= MAX_ACCEPTABLE_UNBALANCE) 
+                {
+                    // 不是有效解，检查是否已经在结果种群中
+                    boolean exists = false;
+                    for (Solution poolSolution : resultPopulation) 
+                    {
+                        if (Arrays.equals(poolSolution.phases, solution.phases) && 
+                            Arrays.equals(poolSolution.moves, solution.moves)) 
+                        {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!exists) 
+                    {
+                        resultPopulation.add(solution);
+                        if (resultPopulation.size() >= populationSize) 
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 如果种群大小仍然不够，通过复制有效解来填充
+        while (resultPopulation.size() < populationSize) 
+        {
+            // 随机选择一个有效解进行复制
+            Solution baseSolution = solutionPool.get(new Random().nextInt(solutionPool.size()));
+            resultPopulation.add(new Solution(baseSolution));
+        }
+        
+        return resultPopulation;
     }
 
     // 轻微变异
