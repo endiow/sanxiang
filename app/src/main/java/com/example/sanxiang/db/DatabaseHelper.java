@@ -1163,4 +1163,27 @@ public class DatabaseHelper extends SQLiteOpenHelper
         
         return userDataList;
     }
+
+    // 判断是否为动力用户
+    public boolean isPowerUser(String userId)
+    {
+        try
+        {
+            // 获取用户最近一天的数据
+            List<UserData> userDataList = getUserLastNDaysData(userId, 1);
+            if (!userDataList.isEmpty())
+            {
+                UserData userData = userDataList.get(0);
+                // 判断是否为动力用户：三相都有电量
+                return userData.getPhaseAPower() > 0 && 
+                       userData.getPhaseBPower() > 0 && 
+                       userData.getPhaseCPower() > 0;
+            }
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+        return false;
+    }
 } 

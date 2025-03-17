@@ -17,63 +17,117 @@
     <com.github.mikephil.charting.charts.LineChart
         android:id="@+id/lineChart"
         android:layout_width="match_parent"
-        android:layout_height="300dp"
-        android:layout_marginBottom="16dp"/>
+        android:layout_height="0dp"
+        android:layout_weight="1"/>
+
+    <!-- 自定义图例 -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginEnd="16dp">
+            <View
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:background="#FF0000"
+                android:layout_gravity="center_vertical"/>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="A相"
+                android:textSize="12sp"
+                android:layout_marginStart="4dp"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginEnd="16dp">
+            <View
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:background="#00FF00"
+                android:layout_gravity="center_vertical"/>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="B相"
+                android:textSize="12sp"
+                android:layout_marginStart="4dp"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <View
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:background="#0000FF"
+                android:layout_gravity="center_vertical"/>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="C相"
+                android:textSize="12sp"
+                android:layout_marginStart="4dp"/>
+        </LinearLayout>
+    </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:background="#F5F5F5"
-        android:padding="12dp">
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:layout_marginTop="8dp">
 
-        <LinearLayout
-            android:layout_width="match_parent"
+        <ImageButton
+            android:id="@+id/btnPrevDay"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_arrow_back"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:padding="8dp"/>
+
+        <EditText
+            android:id="@+id/etDate"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
+            android:inputType="date"
             android:gravity="center"
-            android:layout_marginBottom="8dp">
-
-            <ImageButton
-                android:id="@+id/btnPrevDay"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:src="@drawable/ic_arrow_back"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:padding="8dp"/>
-
-            <EditText
-                android:id="@+id/etDate"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:textSize="14sp"
-                android:hint="输入日期 (yyyy-MM-dd)"
-                android:inputType="date"
-                android:imeOptions="actionDone"
-                android:maxLines="1"
-                android:singleLine="true"
-                android:background="@null"
-                android:layout_marginHorizontal="8dp"/>
-
-            <ImageButton
-                android:id="@+id/btnNextDay"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:src="@drawable/ic_arrow_forward"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:padding="8dp"/>
-
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/tvCurrentPower"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
             android:textSize="14sp"
-            android:lineSpacingExtra="4dp"/>
+            android:hint="输入日期 (yyyy-MM-dd)"
+            android:imeOptions="actionDone"
+            android:maxLines="1"
+            android:singleLine="true"
+            android:background="@null"/>
 
+        <ImageButton
+            android:id="@+id/btnNextDay"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_arrow_forward"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:padding="8dp"/>
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/tvCurrentPower"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textSize="14sp"/>
 
 </LinearLayout> 
