@@ -268,78 +268,40 @@ public class PhaseBalanceActivity extends AppCompatActivity
         EditText etBranchNumber = dialogView.findViewById(R.id.etBranchNumber);
         TextView tvUserCount = dialogView.findViewById(R.id.tvUserCount);
         
-        // 添加文本变化监听器
-        TextWatcher textWatcher = new TextWatcher() 
+        // 获取所有可用的支线编号
+        List<String> branchNumbers = dbHelper.getAllBranchNumbers();
+        if (branchNumbers.isEmpty()) 
         {
-            @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            Toast.makeText(this, "数据库中没有可用的支线", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {}
-
-            @Override
-            public void afterTextChanged(Editable s) 
-            {
-                String routeNumber = etRouteNumber.getText().toString();
-                String branchNumber = etBranchNumber.getText().toString();
+        // 创建支线选择对话框
+        new AlertDialog.Builder(this)
+            .setTitle("选择支线")
+            .setItems(branchNumbers.toArray(new String[0]), (dialog, which) -> {
+                String selectedBranch = branchNumbers.get(which);
                 
-                if (!routeNumber.isEmpty() && !branchNumber.isEmpty()) 
+                // 获取该支线下的所有回路
+                List<String> routeNumbers = dbHelper.getRouteNumbersByBranchNumber(selectedBranch);
+                if (routeNumbers.isEmpty()) 
                 {
-                    // 获取用户数量
-                    List<User> users = dbHelper.getUsersByRouteBranch(routeNumber, branchNumber);
-                    int userCount = users.size();
-                    tvUserCount.setText(String.format("该支线用户数量：%d", userCount));
-                    tvUserCount.setVisibility(View.VISIBLE);
+                    Toast.makeText(this, "该支线下没有回路数据", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                // 直接添加该支线下的所有回路到支线组
+                if (dbHelper.addBranchGroups(selectedBranch, routeNumbers)) 
+                {
+                    Toast.makeText(this, "支线组添加成功", Toast.LENGTH_SHORT).show();
+                    loadBranchGroups();
                 } 
                 else 
                 {
-                    tvUserCount.setVisibility(View.GONE);
-                }
-            }
-        };
-        
-        etRouteNumber.addTextChangedListener(textWatcher);
-        etBranchNumber.addTextChangedListener(textWatcher);
-        
-        new AlertDialog.Builder(this)
-            .setView(dialogView)
-            .setTitle("添加支线组")
-            .setPositiveButton("确定", (dialog, which) -> {
-                String routeNumber = etRouteNumber.getText().toString();
-                String branchNumber = etBranchNumber.getText().toString();
-                
-                if (!routeNumber.isEmpty() && !branchNumber.isEmpty()) 
-                {
-                    // 检查支线组是否已存在
-                    if (dbHelper.branchGroupExists(routeNumber, branchNumber)) 
-                    {
-                        Toast.makeText(this, "该支线组已存在", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    
-                    // 检查数据库中是否有该支线的用户数据
-                    List<User> users = dbHelper.getUsersByRouteBranch(routeNumber, branchNumber);
-                    if (users.isEmpty()) 
-                    {
-                        Toast.makeText(this, "未找到该支线的用户数据", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    
-                    // 添加支线组到数据库
-                    if (dbHelper.addBranchGroup(routeNumber, branchNumber)) 
-                    {
-                        // 重新加载支线组数据
-                        loadBranchGroups();
-                        Toast.makeText(this, String.format("支线组添加成功，包含%d个用户", users.size()), Toast.LENGTH_SHORT).show();
-                    } 
-                    else 
-                    {
-                        Toast.makeText(this, "添加支线组失败", Toast.LENGTH_SHORT).show();
-                    }
+                    Toast.makeText(this, "添加支线组失败", Toast.LENGTH_SHORT).show();
                 }
             })
             .setNegativeButton("取消", null)
-            .create()
             .show();
     }
     

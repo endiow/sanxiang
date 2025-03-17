@@ -1186,4 +1186,141 @@ public class DatabaseHelper extends SQLiteOpenHelper
         }
         return false;
     }
+
+    // 获取所有可用的支线编号
+    public List<String> getAllBranchNumbers() 
+    {
+        List<String> branchNumbers = new ArrayList<>();
+        SQLiteDatabase db = null;
+        Cursor cursor = null;
+        
+        try 
+        {
+            db = this.getReadableDatabase();
+            String query = "SELECT DISTINCT " + COLUMN_BRANCH_NUMBER + 
+                         " FROM " + TABLE_USER_INFO + 
+                         " WHERE " + COLUMN_BRANCH_NUMBER + " != '0'" +
+                         " ORDER BY " + COLUMN_BRANCH_NUMBER + " ASC";
+            
+            cursor = db.rawQuery(query, null);
+            
+            while (cursor.moveToNext()) 
+            {
+                String branchNumber = cursor.getString(0);
+                branchNumbers.add(branchNumber);
+            }
+        } 
+        catch (Exception e) 
+        {
+            e.printStackTrace();
+        } 
+        finally 
+        {
+            if (cursor != null) 
+            {
+                cursor.close();
+            }
+            if (db != null) 
+            {
+                db.close();
+            }
+        }
+        
+        return branchNumbers;
+    }
+
+    // 根据支线编号获取所有回路
+    public List<String> getRouteNumbersByBranchNumber(String branchNumber) 
+    {
+        List<String> routeNumbers = new ArrayList<>();
+        SQLiteDatabase db = null;
+        Cursor cursor = null;
+        
+        try 
+        {
+            db = this.getReadableDatabase();
+            String query = "SELECT DISTINCT " + COLUMN_ROUTE_NUMBER + 
+                         " FROM " + TABLE_USER_INFO + 
+                         " WHERE " + COLUMN_BRANCH_NUMBER + " = ?" +
+                         " ORDER BY " + COLUMN_ROUTE_NUMBER + " ASC";
+            
+            cursor = db.rawQuery(query, new String[]{branchNumber});
+            
+            while (cursor.moveToNext()) 
+            {
+                String routeNumber = cursor.getString(0);
+                routeNumbers.add(routeNumber);
+            }
+        } 
+        catch (Exception e) 
+        {
+            e.printStackTrace();
+        } 
+        finally 
+        {
+            if (cursor != null) 
+            {
+                cursor.close();
+            }
+            if (db != null) 
+            {
+                db.close();
+            }
+        }
+        
+        return routeNumbers;
+    }
+
+    // 添加多个支线组
+    public boolean addBranchGroups(String branchNumber, List<String> routeNumbers) 
+    {
+        SQLiteDatabase db = null;
+        boolean success = true;
+        
+        try 
+        {
+            db = this.getWritableDatabase();
+            db.beginTransaction();
+            
+            for (String routeNumber : routeNumbers) 
+            {
+                ContentValues values = new ContentValues();
+                values.put(COLUMN_ROUTE_NUMBER, routeNumber);
+                values.put(COLUMN_BRANCH_NUMBER, branchNumber);
+                
+                long result = db.insertWithOnConflict(
+                    TABLE_BRANCH_GROUP,
+                    null,
+                    values,
+                    SQLiteDatabase.CONFLICT_IGNORE
+                );
+                
+                if (result == -1) 
+                {
+                    success = false;
+                    break;
+                }
+            }
+            
+            if (success) 
+            {
+                db.setTransactionSuccessful();
+            }
+        } 
+        catch (Exception e) 
+        {
+            e.printStackTrace();
+            success = false;
+        } 
+        finally 
+        {
+            if (db != null) 
+            {
+                db.endTransaction();
+                db.close();
+            }
+        }
+        
+        return success;
+    }
 } 
