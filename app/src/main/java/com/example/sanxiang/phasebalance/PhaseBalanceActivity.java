@@ -521,8 +521,11 @@ public class PhaseBalanceActivity extends AppCompatActivity
             this.solution = solution;  // 保存优化结果
             StringBuilder stats = new StringBuilder();
             
-            // 计算每相总电量和变化的用户数
-            double[] phasePowers = new double[3];
+            // 直接使用解中已计算好的不平衡度和三相功率，避免重新计算导致不一致
+            double[] phasePowers = solution.getPhasePowers();
+            double unbalanceRate = solution.getUnbalanceRate();
+            
+            // 统计变化的用户数
             int changedUsers = 0;
             int changedPowerUsers = 0;  // 添加动力用户计数
             
@@ -530,42 +533,22 @@ public class PhaseBalanceActivity extends AppCompatActivity
             {
                 User user = users.get(i);
                 byte newPhase = solution.getPhase(i);
+                byte moves = solution.getMoves(i);
                 
-                if (newPhase > 0) 
+                // 检查用户是否发生变化
+                boolean isChanged = false;
+                if (user.isPowerPhase()) 
                 {
-                    if (user.isPowerPhase()) 
-                    {
-                        // 动力相用户：根据移动次数重新分配三相电量
-                        byte moves = solution.getMoves(i);
-                        if (moves == 1) 
-                        {
-                            // 移动1次：A->B, B->C, C->A
-                            phasePowers[0] += user.getPhaseCPower();
-                            phasePowers[1] += user.getPhaseAPower();
-                            phasePowers[2] += user.getPhaseBPower();
-                        }
-                        else if (moves == 2) 
-                        {
-                            // 移动2次：A->C, B->A, C->B
-                            phasePowers[0] += user.getPhaseBPower();
-                            phasePowers[1] += user.getPhaseCPower();
-                            phasePowers[2] += user.getPhaseAPower();
-                        }
-                        else 
-                        {
-                            // 不移动时保持原电量
-                            phasePowers[0] += user.getPhaseAPower();
-                            phasePowers[1] += user.getPhaseBPower();
-                            phasePowers[2] += user.getPhaseCPower();
-                        }
-                    }
-                    else 
-                    {
-                        phasePowers[newPhase - 1] += user.getPowerByPhase(user.getCurrentPhase());
-                    }
+                    // 动力用户通过moves判断
+                    isChanged = moves > 0;
+                } 
+                else 
+                {
+                    // 普通用户通过相位变化判断
+                    isChanged = newPhase != user.getCurrentPhase();
                 }
                 
-                if (newPhase != user.getCurrentPhase()) 
+                if (isChanged) 
                 {
                     changedUsers++;
                     if (user.isPowerPhase()) 
@@ -584,12 +567,15 @@ public class PhaseBalanceActivity extends AppCompatActivity
                 "C相：%.2f\n\n",
                 phasePowers[0], phasePowers[1], phasePowers[2]));
             
-            // 使用UnbalanceCalculator计算不平衡度
-            double unbalanceRate = UnbalanceCalculator.calculateUnbalanceRate(
-                phasePowers[0], phasePowers[1], phasePowers[2]
-            );
+            // 使用算法中计算的不平衡度
             String status = UnbalanceCalculator.getUnbalanceStatus(unbalanceRate);
             stats.append(String.format("三相不平衡度：%.2f%% (%s)", unbalanceRate, status));
+            
+            // 添加日志以便调试
+            Log.d("PhaseBalanceActivity", String.format(
+                "显示优化结果 - 不平衡度: %.2f%%, 三相功率: [%.2f, %.2f, %.2f]",
+                unbalanceRate, phasePowers[0], phasePowers[1], phasePowers[2]
+            ));
             
             // 设置统计信息
             tvResultStats.setText(stats.toString());
@@ -603,8 +589,20 @@ public class PhaseBalanceActivity extends AppCompatActivity
             {
                 User user = users.get(i);
                 byte newPhase = solution.getPhase(i);
+                byte moves = solution.getMoves(i);
                 
-                if (newPhase != user.getCurrentPhase()) 
+                // 使用与前面相同的逻辑判断用户是否发生变化
+                boolean isChanged = false;
+                if (user.isPowerPhase()) 
+                {
+                    isChanged = moves > 0;
+                } 
+                else 
+                {
+                    isChanged = newPhase != user.getCurrentPhase();
+                }
+                
+                if (isChanged) 
                 {
                     String routeNumber = user.getRouteNumber();
                     String branchNumber = user.getBranchNumber();

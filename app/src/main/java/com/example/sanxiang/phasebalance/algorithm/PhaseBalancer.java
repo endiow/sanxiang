@@ -1,5 +1,6 @@
 package com.example.sanxiang.phasebalance.algorithm;
 
+import android.util.Log;
 import com.example.sanxiang.util.UnbalanceCalculator;
 import com.example.sanxiang.phasebalance.model.User;
 import com.example.sanxiang.phasebalance.model.BranchGroup;
@@ -132,36 +133,41 @@ public class PhaseBalancer
     {
         try 
         {
-            // 根据用户数量动态调整种群大小和迭代轮数
-            int userCount = users.size();
-            int populationSize = Math.min(MAX_POPULATION_SIZE, 
-                Math.max(MIN_POPULATION_SIZE, 
-                    MIN_POPULATION_SIZE * (1 + userCount / SCALE_THRESHOLD)));
+            // 增加最大重试次数，确保能找到满足条件的解
+            final int MAX_TOTAL_ATTEMPTS = 3; // 最大总尝试次数
             
-            int generations = Math.min(MAX_GENERATIONS, 
-                Math.max(MIN_GENERATIONS, 
-                    MIN_GENERATIONS * (1 + userCount / SCALE_THRESHOLD)));
-            
-            List<Solution> validSolutions = new ArrayList<>();
-            int totalAttempts = 0;  // 总尝试次数
-            int maxTotalAttempts = OPTIMIZATION_TIMES * MAX_RETRY_TIMES;  // 最大总尝试次数
-            
-            // 记录全局最优解的适应度
-            double globalBestFitness = Double.POSITIVE_INFINITY;
-            
-            while (validSolutions.size() < 10 && totalAttempts < maxTotalAttempts && !isTerminated) 
+            for (int attempt = 0; attempt < MAX_TOTAL_ATTEMPTS && !isTerminated; attempt++) 
             {
-                totalAttempts++;
+                Log.d("PhaseBalancer", String.format("开始第%d次优化尝试", attempt + 1));
+                
+                // 根据用户数量动态调整种群大小和迭代轮数
+                int userCount = users.size();
+                int populationSize = Math.min(MAX_POPULATION_SIZE, 
+                    Math.max(MIN_POPULATION_SIZE, 
+                        MIN_POPULATION_SIZE * (1 + userCount / SCALE_THRESHOLD)));
+                
+                // 固定迭代次数为1000
+                int generations = 1000;
+                
+                // 初始化全局最优解
+                Solution globalBestSolution = null;
+                double globalBestFitness = Double.POSITIVE_INFINITY;
+                
+                // 跟踪遇到的所有不平衡度小于15%的解
+                List<Solution> validSolutions = new ArrayList<>();
                 
                 // 初始化种群
                 List<Solution> population = initializePopulation(populationSize);
+                
                 // 检查初始化是否成功
                 if (population == null) 
                 {
-                    continue; 
+                    Log.d("PhaseBalancer", "种群初始化失败，尝试重新初始化");
+                    continue; // 尝试重新初始化种群
                 }
-                Solution bestSolution = null;
-                double bestFitness = Double.POSITIVE_INFINITY;
+                
+                // 设置提前终止的目标适应度值
+                double targetFitness = 115;  
                 
                 // 迭代优化
                 for (int i = 0; !isTerminated && i < generations; i++) 
@@ -182,55 +188,69 @@ public class PhaseBalancer
                     
                     // 获取当前最优解
                     Solution currentBest = getBestSolution(population);
-                    if (currentBest.getFitness() < bestFitness) 
-                    {
-                        bestSolution = new Solution(currentBest);
-                        bestFitness = currentBest.getFitness();
-                        localSearch(bestSolution);  //局部搜索
-                    }
-                }
-                
-                if (bestSolution != null) 
-                {
-                    // 计算最终适应度
-                    calculateFitness(Arrays.asList(bestSolution));
                     
-                    // 判断是否为有效解
-                    if (bestSolution.getUnbalanceRate() < MAX_ACCEPTABLE_UNBALANCE) 
+                    // 局部搜索
+                    localSearch(currentBest);
+                    
+                    // 重新计算适应度
+                    calculateFitness(Arrays.asList(currentBest));
+                    
+                    // 检查是否为有效解（不平衡度小于15%）
+                    if (currentBest.getUnbalanceRate() < MAX_ACCEPTABLE_UNBALANCE) 
                     {
-                        // 对于小于15%的解，直接加入或替换
-                        if (validSolutions.size() < 10) 
+                        // 将不平衡度小于15%的解加入有效解列表
+                        validSolutions.add(new Solution(currentBest));
+                        
+                        // 更新全局最优解
+                        if (currentBest.getFitness() < globalBestFitness) 
                         {
-                            validSolutions.add(bestSolution);
-                        }
-                        else 
-                        {
-                            // 找出现有解中适应度最大的（最差的）解
-                            Solution worstSolution = Collections.max(validSolutions, 
-                                Comparator.comparingDouble(s -> s.fitness));
+                            globalBestSolution = new Solution(currentBest);
+                            globalBestFitness = currentBest.getFitness();
                             
-                            // 如果新解比最差解好，则替换
-                            if (bestSolution.getFitness() < worstSolution.getFitness()) 
+                            // 如果适应度已达到目标值，提前终止迭代
+                            if (globalBestFitness <= targetFitness) 
                             {
-                                validSolutions.remove(worstSolution);
-                                validSolutions.add(bestSolution);
+                                Log.d("PhaseBalancer", String.format(
+                                    "第%d代找到满足条件的解，适应度: %.2f, 不平衡度: %.2f%%",
+                                    i, globalBestFitness, globalBestSolution.getUnbalanceRate()
+                                ));
+                                break;
                             }
                         }
                     }
+                    
+                    // 每100代输出日志
+                    if (i % 100 == 0) 
+                    {
+                        Log.d("PhaseBalancer", String.format(
+                            "第%d代 - 当前最优适应度: %.2f, 不平衡度: %.2f%%",
+                            i, currentBest.getFitness(), currentBest.getUnbalanceRate()
+                        ));
+                    }
                 }
-            }
-            
-            // 修改返回逻辑：只返回不平衡度小于15%的最优解
-            if (!validSolutions.isEmpty()) 
-            {
-                Solution bestSolution = Collections.min(validSolutions, 
-                    Comparator.comparingDouble(s -> s.fitness));
-                if (bestSolution.getUnbalanceRate() < MAX_ACCEPTABLE_UNBALANCE) 
+                
+                // 检查是否找到了有效解
+                if (!validSolutions.isEmpty()) 
                 {
+                    // 从有效解中选择适应度最小的解
+                    Solution bestSolution = Collections.min(validSolutions, 
+                        Comparator.comparingDouble(s -> s.fitness));
+                    
+                    Log.d("PhaseBalancer", String.format(
+                        "优化完成，找到满足条件的解，适应度: %.2f, 不平衡度: %.2f%%",
+                        bestSolution.getFitness(), bestSolution.getUnbalanceRate()
+                    ));
+                    
                     return bestSolution;
                 }
+                
+                Log.d("PhaseBalancer", String.format(
+                    "第%d次尝试未找到满足条件的解，尝试重新优化", attempt + 1
+                ));
             }
-            return null;  // 如果没有找到满足条件的解，返回null
+            
+            Log.d("PhaseBalancer", "所有优化尝试都失败，未找到满足条件的解");
+            return null;  // 所有尝试都失败，返回null
         } 
         catch (Exception e) 
         {
@@ -788,63 +808,78 @@ public class PhaseBalancer
         double initialUnbalance = UnbalanceCalculator.calculateUnbalanceRate(
             initialPhasePowers[0], initialPhasePowers[1], initialPhasePowers[2]
         );
+        
+        // 计算用户总数
+        int totalUsers = users.size();
 
-        // 计算改善率
+        // 计算适应度
         for (Solution solution : population) 
         {
             double improvementRate = (initialUnbalance - solution.unbalanceRate) / initialUnbalance * 100;
-            double normalizedAdjustmentCost = (solution.adjustmentCost / totalPower) * 100;
+            double normalizedChangeRatio = solution.changeRatio;  // 调整用户比例
+            double normalizedAdjustmentCost = (solution.adjustmentCost / totalPower) * 100;  // 调相代价
             
-            // 基础分值设置，保持合理的梯度
+            // 首先根据不平衡度设置基础分值，使用更大的基础值差异确保分层优先级
             double baseFitness;
             if (solution.unbalanceRate > MAX_ACCEPTABLE_UNBALANCE) // > 15%
             {
-                baseFitness = 1000;  // 基础分值1000
+                baseFitness = 10000;  // 基础分值显著提高，确保不可接受的解被明确拒绝
             }
             else if (solution.unbalanceRate > 10.0) // 10-15%
             {
-                baseFitness = 500;   // 基础分值500
+                baseFitness = 5000;   // 可接受但不理想
             }
-            else if (solution.unbalanceRate > 5.0) // 5-10%，目标区间
+            else if (solution.unbalanceRate >= 5.0 && solution.unbalanceRate <= 10.0) // 5-10%，目标区间
             {
-                baseFitness = 100;   // 基础分值100
+                baseFitness = 100;   // 最优基础分值，明显低于其他区间
             }
             else // 0-5%
             {
-                baseFitness = 300;   // 基础分值300
+                baseFitness = 2000;   // 过度优化，不如5-10%区间
             }
-
-            // 在基础分值上增加细节分数
+            
+            // 在基础分值的基础上，根据区间使用不同的权重计算适应度
             if (solution.unbalanceRate > MAX_ACCEPTABLE_UNBALANCE) 
             {
-                // >15%的解：基础分值1000，再加上改善率的影响(0-200)
-                solution.fitness = baseFitness + (200 - 2 * improvementRate);
+                // >15%的解：不可接受，使用改善率鼓励向可接受方向发展
+                solution.fitness = baseFitness + (300 - 3 * improvementRate);
             }
             else if (solution.unbalanceRate > 10.0) 
             {
-                // 10-15%的解：基础分值500，再加上不平衡度、调整用户数和调相代价的影响(0-100)
+                // 10-15%的解：调整权重以反映优先级
+                // 不平衡度接近10%的解得分更低(更好)
                 solution.fitness = baseFitness + (
-                    0.6 * (solution.unbalanceRate - 10.0) * 20 +
-                    0.3 * solution.changeRatio +
-                    0.1 * normalizedAdjustmentCost
+                    0.5 * (solution.unbalanceRate - 10.0) * 30 +  // 更重视接近10%
+                    0.4 * normalizedChangeRatio +  // 调整用户数为次要考虑因素
+                    0.1 * normalizedAdjustmentCost  // 调相代价为最后考虑因素
                 );
             }
-            else if (solution.unbalanceRate > 5.0) 
+            else if (solution.unbalanceRate >= 5.0 && solution.unbalanceRate <= 10.0) 
             {
-                // 5-10%的解：基础分值100，再加上调整用户数、调相代价和不平衡度的影响(0-50)
+                // 5-10%的解：理想区间，主要考虑调整用户数，其次是调相代价
+                // 不平衡度接近中间值(7.5%)的解更优
+                double unbalanceDeviation = Math.abs(solution.unbalanceRate - 7.5);
                 solution.fitness = baseFitness + (
-                    0.5 * solution.changeRatio * 0.5 +
-                    0.3 * normalizedAdjustmentCost * 0.5 +
-                    0.2 * (solution.unbalanceRate - 5.0) * 5
+                    0.15 * unbalanceDeviation * 10 +        // 15%权重给不平衡度与理想值的偏差
+                    0.7 * normalizedChangeRatio +          // 70%权重给调整用户比例
+                    0.15 * normalizedAdjustmentCost        // 15%权重给调相代价
                 );
             }
             else 
             {
-                // 0-5%的解：基础分值300，再加上调整用户数和调相代价的影响(0-50)
+                // 0-5%的解：过度优化，主要根据调整用户数与调相代价计算
                 solution.fitness = baseFitness + (
-                    0.6 * solution.changeRatio * 0.5 +
-                    0.4 * normalizedAdjustmentCost * 0.5
+                    0.8 * normalizedChangeRatio +          // 80%权重给调整用户比例
+                    0.2 * normalizedAdjustmentCost         // 20%权重给调相代价
                 );
+            }
+            
+            // 记录日志用于调试
+            if (solution.fitness < 200) {
+                Log.d("PhaseBalancer", String.format(
+                    "高质量解 - 不平衡度: %.2f%%, 调整用户比例: %.2f%%, 调相代价: %.2f, 适应度: %.2f",
+                    solution.unbalanceRate, normalizedChangeRatio, normalizedAdjustmentCost, solution.fitness
+                ));
             }
         }
     }
