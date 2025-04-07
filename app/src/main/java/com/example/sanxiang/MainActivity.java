@@ -563,14 +563,25 @@ public class MainActivity extends AppCompatActivity
             {
                 // 反转日期列表，使其按时间顺序排列
                 Collections.reverse(dbDates);
-                dates.addAll(dbDates);
-
+                
                 // 获取每天的数据
-                for (int i = 0; i < dates.size(); i++)
+                for (int i = 0; i < dbDates.size(); i++)
                 {
+                    String date = dbDates.get(i);
+                    
+                    // 检查该日期是否有相位调整
+                    if (dbHelper.hasPhaseAdjustmentOnDate(date))
+                    {
+                        dates.add(date + "(已调整)");
+                    }
+                    else
+                    {
+                        dates.add(date);
+                    }
+                    
                     try
                     {
-                        double[] powers = dbHelper.getTotalPowerByDate(dates.get(i));
+                        double[] powers = dbHelper.getTotalPowerByDate(date);
                         if (powers != null && powers.length >= 3)
                         {
                             entriesA.add(new Entry(i, (float)powers[0]));

@@ -25,6 +25,7 @@ import com.github.mikephil.charting.listener.OnChartValueSelectedListener;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 public class UserDetailActivity extends AppCompatActivity
 {
@@ -335,52 +336,8 @@ public class UserDetailActivity extends AppCompatActivity
 
         if (isPowerUser)
         {
-            // 动力用户：分别显示三相数据
-            List<Entry> entriesA = new ArrayList<>();
-            List<Entry> entriesB = new ArrayList<>();
-            List<Entry> entriesC = new ArrayList<>();
-
-            for (int i = 0; i < historicalData.size(); i++)
-            {
-                UserData data = historicalData.get(i);
-                dates.add(data.getDate());
-                
-                entriesA.add(new Entry(i, (float) data.getPhaseAPower()));
-                entriesB.add(new Entry(i, (float) data.getPhaseBPower()));
-                entriesC.add(new Entry(i, (float) data.getPhaseCPower()));
-            }
-
-            // 创建三个数据集
-            LineDataSet dataSetA = new LineDataSet(entriesA, "");
-            dataSetA.setColor(Color.RED);
-            dataSetA.setCircleColor(Color.RED);
-            dataSetA.setDrawCircles(true);
-            dataSetA.setCircleRadius(4f);
-            dataSetA.setDrawValues(false);
-            dataSetA.setLineWidth(2f);
-
-            LineDataSet dataSetB = new LineDataSet(entriesB, "");
-            dataSetB.setColor(Color.GREEN);
-            dataSetB.setCircleColor(Color.GREEN);
-            dataSetB.setDrawCircles(true);
-            dataSetB.setCircleRadius(4f);
-            dataSetB.setDrawValues(false);
-            dataSetB.setLineWidth(2f);
-
-            LineDataSet dataSetC = new LineDataSet(entriesC, "");
-            dataSetC.setColor(Color.BLUE);
-            dataSetC.setCircleColor(Color.BLUE);
-            dataSetC.setDrawCircles(true);
-            dataSetC.setCircleRadius(4f);
-            dataSetC.setDrawValues(false);
-            dataSetC.setLineWidth(2f);
-
-            // 禁用默认图例
-            lineChart.getLegend().setEnabled(false);
-
-            // 更新图表
-            LineData lineData = new LineData(dataSetA, dataSetB, dataSetC);
-            lineChart.setData(lineData);
+            // 动力用户处理逻辑
+            setupPowerUserChart(historicalData);
         }
         else
         {
@@ -440,5 +397,171 @@ public class UserDetailActivity extends AppCompatActivity
         // 设置X轴标签
         lineChart.getXAxis().setValueFormatter(new IndexAxisValueFormatter(dates));
         lineChart.invalidate();
+    }
+
+    /**
+     * 为动力用户设置图表，处理相位调整
+     */
+    private void setupPowerUserChart(List<UserData> historicalData)
+    {
+        // 创建多个数据集以处理相位切换
+        List<List<Entry>> phaseASegments = new ArrayList<>();
+        List<List<Entry>> phaseBSegments = new ArrayList<>();
+        List<List<Entry>> phaseCSegments = new ArrayList<>();
+        
+        // 初始化第一段
+        List<Entry> currentSegmentA = new ArrayList<>();
+        List<Entry> currentSegmentB = new ArrayList<>();
+        List<Entry> currentSegmentC = new ArrayList<>();
+        
+        phaseASegments.add(currentSegmentA);
+        phaseBSegments.add(currentSegmentB);
+        phaseCSegments.add(currentSegmentC);
+        
+        String lastDate = null;
+        byte lastPhaseState = 0; // 0=初始状态, 1=正常, 2=顺时针调整, 3=逆时针调整
+        
+        for (int i = 0; i < historicalData.size(); i++)
+        {
+            UserData data = historicalData.get(i);
+            dates.add(data.getDate());
+            
+            // 检查是否有相位调整
+            boolean hasAdjustment = false;
+            byte phaseState = 1; // 默认正常
+            
+            if (lastDate != null)
+            {
+                Map<String, Object> adjustmentInfo = dbHelper.getUserPhaseAdjustment(userId, data.getDate());
+                if (adjustmentInfo != null)
+                {
+                    hasAdjustment = true;
+                    
+                    // 获取调整类型
+                    String oldPhase = (String) adjustmentInfo.get("old_phase");
+                    String newPhase = (String) adjustmentInfo.get("new_phase");
+                    Double oldPhaseA = (Double) adjustmentInfo.get("old_phase_a");
+                    Double oldPhaseB = (Double) adjustmentInfo.get("old_phase_b");
+                    Double oldPhaseC = (Double) adjustmentInfo.get("old_phase_c");
+                    Double newPhaseA = (Double) adjustmentInfo.get("new_phase_a");
+                    Double newPhaseB = (Double) adjustmentInfo.get("new_phase_b");
+                    Double newPhaseC = (Double) adjustmentInfo.get("new_phase_c");
+                    
+                    // 检查是否顺时针调整 (A->B, B->C, C->A)
+                    boolean clockwise = 
+                        (Math.abs(oldPhaseA - newPhaseB) < 0.05 * oldPhaseA) && 
+                        (Math.abs(oldPhaseB - newPhaseC) < 0.05 * oldPhaseB) && 
+                        (Math.abs(oldPhaseC - newPhaseA) < 0.05 * oldPhaseC);
+                    
+                    // 检查是否逆时针调整 (A->C, B->A, C->B)
+                    boolean counterClockwise = 
+                        (Math.abs(oldPhaseA - newPhaseC) < 0.05 * oldPhaseA) && 
+                        (Math.abs(oldPhaseB - newPhaseA) < 0.05 * oldPhaseB) && 
+                        (Math.abs(oldPhaseC - newPhaseB) < 0.05 * oldPhaseC);
+                    
+                    if (clockwise) {
+                        phaseState = 2; // 顺时针
+                    } else if (counterClockwise) {
+                        phaseState = 3; // 逆时针
+                    }
+                }
+            }
+            
+            // 如果相位状态变化，则开始新的线段
+            if (lastPhaseState != 0 && phaseState != lastPhaseState && hasAdjustment)
+            {
+                currentSegmentA = new ArrayList<>();
+                currentSegmentB = new ArrayList<>();
+                currentSegmentC = new ArrayList<>();
+                
+                phaseASegments.add(currentSegmentA);
+                phaseBSegments.add(currentSegmentB);
+                phaseCSegments.add(currentSegmentC);
+            }
+            
+            // 根据当前相位状态添加数据点
+            if (phaseState == 1) // 正常
+            {
+                currentSegmentA.add(new Entry(i, (float) data.getPhaseAPower()));
+                currentSegmentB.add(new Entry(i, (float) data.getPhaseBPower()));
+                currentSegmentC.add(new Entry(i, (float) data.getPhaseCPower()));
+            }
+            else if (phaseState == 2) // 顺时针 (A->B, B->C, C->A)
+            {
+                currentSegmentA.add(new Entry(i, (float) data.getPhaseCPower())); // A显示C相的值
+                currentSegmentB.add(new Entry(i, (float) data.getPhaseAPower())); // B显示A相的值
+                currentSegmentC.add(new Entry(i, (float) data.getPhaseBPower())); // C显示B相的值
+            }
+            else if (phaseState == 3) // 逆时针 (A->C, B->A, C->B)
+            {
+                currentSegmentA.add(new Entry(i, (float) data.getPhaseBPower())); // A显示B相的值
+                currentSegmentB.add(new Entry(i, (float) data.getPhaseCPower())); // B显示C相的值
+                currentSegmentC.add(new Entry(i, (float) data.getPhaseAPower())); // C显示A相的值
+            }
+            
+            lastDate = data.getDate();
+            lastPhaseState = phaseState;
+        }
+        
+        // 创建数据集并添加到图表
+        LineData lineData = new LineData();
+        int segmentIndex = 0;
+        
+        // 为每个线段创建数据集
+        for (List<Entry> segment : phaseASegments)
+        {
+            if (!segment.isEmpty())
+            {
+                LineDataSet dataSet = new LineDataSet(segment, "A" + segmentIndex);
+                dataSet.setColor(Color.RED);
+                dataSet.setCircleColor(Color.RED);
+                dataSet.setDrawCircles(true);
+                dataSet.setCircleRadius(4f);
+                dataSet.setDrawValues(false);
+                dataSet.setLineWidth(2f);
+                lineData.addDataSet(dataSet);
+            }
+            segmentIndex++;
+        }
+        
+        segmentIndex = 0;
+        for (List<Entry> segment : phaseBSegments)
+        {
+            if (!segment.isEmpty())
+            {
+                LineDataSet dataSet = new LineDataSet(segment, "B" + segmentIndex);
+                dataSet.setColor(Color.GREEN);
+                dataSet.setCircleColor(Color.GREEN);
+                dataSet.setDrawCircles(true);
+                dataSet.setCircleRadius(4f);
+                dataSet.setDrawValues(false);
+                dataSet.setLineWidth(2f);
+                lineData.addDataSet(dataSet);
+            }
+            segmentIndex++;
+        }
+        
+        segmentIndex = 0;
+        for (List<Entry> segment : phaseCSegments)
+        {
+            if (!segment.isEmpty())
+            {
+                LineDataSet dataSet = new LineDataSet(segment, "C" + segmentIndex);
+                dataSet.setColor(Color.BLUE);
+                dataSet.setCircleColor(Color.BLUE);
+                dataSet.setDrawCircles(true);
+                dataSet.setCircleRadius(4f);
+                dataSet.setDrawValues(false);
+                dataSet.setLineWidth(2f);
+                lineData.addDataSet(dataSet);
+            }
+            segmentIndex++;
+        }
+        
+        // 禁用默认图例
+        lineChart.getLegend().setEnabled(false);
+        
+        // 更新图表
+        lineChart.setData(lineData);
     }
 } 
