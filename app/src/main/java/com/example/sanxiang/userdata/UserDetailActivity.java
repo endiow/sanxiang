@@ -404,164 +404,42 @@ public class UserDetailActivity extends AppCompatActivity
      */
     private void setupPowerUserChart(List<UserData> historicalData)
     {
-        // 创建多个数据集以处理相位切换
-        List<List<Entry>> phaseASegments = new ArrayList<>();
-        List<List<Entry>> phaseBSegments = new ArrayList<>();
-        List<List<Entry>> phaseCSegments = new ArrayList<>();
+        // 创建三相数据集
+        List<Entry> entriesA = new ArrayList<>();
+        List<Entry> entriesB = new ArrayList<>();
+        List<Entry> entriesC = new ArrayList<>();
         
-        // 初始化第一段
-        List<Entry> currentSegmentA = new ArrayList<>();
-        List<Entry> currentSegmentB = new ArrayList<>();
-        List<Entry> currentSegmentC = new ArrayList<>();
-        
-        phaseASegments.add(currentSegmentA);
-        phaseBSegments.add(currentSegmentB);
-        phaseCSegments.add(currentSegmentC);
-        
-        String lastDate = null;
-        byte lastPhaseState = 0; // 0=初始状态, 1=正常, 2=顺时针调整, 3=逆时针调整
-        
+        // 处理历史数据
         for (int i = 0; i < historicalData.size(); i++)
         {
             UserData data = historicalData.get(i);
             dates.add(data.getDate());
             
-            // 检查是否有相位调整
-            boolean hasAdjustment = false;
-            byte phaseState = 1; // 默认正常
-            
-            if (lastDate != null)
-            {
-                Map<String, Object> adjustmentInfo = dbHelper.getUserPhaseAdjustment(userId, data.getDate());
-                if (adjustmentInfo != null)
-                {
-                    hasAdjustment = true;
-                    
-                    // 获取调整类型
-                    String oldPhase = (String) adjustmentInfo.get("old_phase");
-                    String newPhase = (String) adjustmentInfo.get("new_phase");
-                    Double oldPhaseA = (Double) adjustmentInfo.get("old_phase_a");
-                    Double oldPhaseB = (Double) adjustmentInfo.get("old_phase_b");
-                    Double oldPhaseC = (Double) adjustmentInfo.get("old_phase_c");
-                    Double newPhaseA = (Double) adjustmentInfo.get("new_phase_a");
-                    Double newPhaseB = (Double) adjustmentInfo.get("new_phase_b");
-                    Double newPhaseC = (Double) adjustmentInfo.get("new_phase_c");
-                    
-                    // 检查是否顺时针调整 (A->B, B->C, C->A)
-                    boolean clockwise = 
-                        (Math.abs(oldPhaseA - newPhaseB) < 0.05 * oldPhaseA) && 
-                        (Math.abs(oldPhaseB - newPhaseC) < 0.05 * oldPhaseB) && 
-                        (Math.abs(oldPhaseC - newPhaseA) < 0.05 * oldPhaseC);
-                    
-                    // 检查是否逆时针调整 (A->C, B->A, C->B)
-                    boolean counterClockwise = 
-                        (Math.abs(oldPhaseA - newPhaseC) < 0.05 * oldPhaseA) && 
-                        (Math.abs(oldPhaseB - newPhaseA) < 0.05 * oldPhaseB) && 
-                        (Math.abs(oldPhaseC - newPhaseB) < 0.05 * oldPhaseC);
-                    
-                    if (clockwise) {
-                        phaseState = 2; // 顺时针
-                    } else if (counterClockwise) {
-                        phaseState = 3; // 逆时针
-                    }
-                }
-            }
-            
-            // 如果相位状态变化，则开始新的线段
-            if (lastPhaseState != 0 && phaseState != lastPhaseState && hasAdjustment)
-            {
-                currentSegmentA = new ArrayList<>();
-                currentSegmentB = new ArrayList<>();
-                currentSegmentC = new ArrayList<>();
-                
-                phaseASegments.add(currentSegmentA);
-                phaseBSegments.add(currentSegmentB);
-                phaseCSegments.add(currentSegmentC);
-            }
-            
-            // 根据当前相位状态添加数据点
-            if (phaseState == 1) // 正常
-            {
-                currentSegmentA.add(new Entry(i, (float) data.getPhaseAPower()));
-                currentSegmentB.add(new Entry(i, (float) data.getPhaseBPower()));
-                currentSegmentC.add(new Entry(i, (float) data.getPhaseCPower()));
-            }
-            else if (phaseState == 2) // 顺时针 (A->B, B->C, C->A)
-            {
-                currentSegmentA.add(new Entry(i, (float) data.getPhaseCPower())); // A显示C相的值
-                currentSegmentB.add(new Entry(i, (float) data.getPhaseAPower())); // B显示A相的值
-                currentSegmentC.add(new Entry(i, (float) data.getPhaseBPower())); // C显示B相的值
-            }
-            else if (phaseState == 3) // 逆时针 (A->C, B->A, C->B)
-            {
-                currentSegmentA.add(new Entry(i, (float) data.getPhaseBPower())); // A显示B相的值
-                currentSegmentB.add(new Entry(i, (float) data.getPhaseCPower())); // B显示C相的值
-                currentSegmentC.add(new Entry(i, (float) data.getPhaseAPower())); // C显示A相的值
-            }
-            
-            lastDate = data.getDate();
-            lastPhaseState = phaseState;
+            entriesA.add(new Entry(i, (float) data.getPhaseAPower()));
+            entriesB.add(new Entry(i, (float) data.getPhaseBPower()));
+            entriesC.add(new Entry(i, (float) data.getPhaseCPower()));
         }
         
-        // 创建数据集并添加到图表
-        LineData lineData = new LineData();
-        int segmentIndex = 0;
-        
-        // 为每个线段创建数据集
-        for (List<Entry> segment : phaseASegments)
-        {
-            if (!segment.isEmpty())
-            {
-                LineDataSet dataSet = new LineDataSet(segment, "A" + segmentIndex);
-                dataSet.setColor(Color.RED);
-                dataSet.setCircleColor(Color.RED);
-                dataSet.setDrawCircles(true);
-                dataSet.setCircleRadius(4f);
-                dataSet.setDrawValues(false);
-                dataSet.setLineWidth(2f);
-                lineData.addDataSet(dataSet);
-            }
-            segmentIndex++;
-        }
-        
-        segmentIndex = 0;
-        for (List<Entry> segment : phaseBSegments)
-        {
-            if (!segment.isEmpty())
-            {
-                LineDataSet dataSet = new LineDataSet(segment, "B" + segmentIndex);
-                dataSet.setColor(Color.GREEN);
-                dataSet.setCircleColor(Color.GREEN);
-                dataSet.setDrawCircles(true);
-                dataSet.setCircleRadius(4f);
-                dataSet.setDrawValues(false);
-                dataSet.setLineWidth(2f);
-                lineData.addDataSet(dataSet);
-            }
-            segmentIndex++;
-        }
-        
-        segmentIndex = 0;
-        for (List<Entry> segment : phaseCSegments)
-        {
-            if (!segment.isEmpty())
-            {
-                LineDataSet dataSet = new LineDataSet(segment, "C" + segmentIndex);
-                dataSet.setColor(Color.BLUE);
-                dataSet.setCircleColor(Color.BLUE);
-                dataSet.setDrawCircles(true);
-                dataSet.setCircleRadius(4f);
-                dataSet.setDrawValues(false);
-                dataSet.setLineWidth(2f);
-                lineData.addDataSet(dataSet);
-            }
-            segmentIndex++;
-        }
-        
-        // 禁用默认图例
-        lineChart.getLegend().setEnabled(false);
+        // 创建数据集
+        LineDataSet setA = createLineDataSet(entriesA, "A相", Color.RED);  // 红色
+        LineDataSet setB = createLineDataSet(entriesB, "B相", Color.GREEN);  // 绿色
+        LineDataSet setC = createLineDataSet(entriesC, "C相", Color.BLUE); // 蓝色
         
         // 更新图表
+        LineData lineData = new LineData(setA, setB, setC);
         lineChart.setData(lineData);
+    }
+    
+    private LineDataSet createLineDataSet(List<Entry> entries, String label, int color)
+    {
+        LineDataSet dataSet = new LineDataSet(entries, label);
+        dataSet.setColor(color);
+        dataSet.setCircleColor(color);
+        dataSet.setDrawCircles(true);
+        dataSet.setCircleRadius(4f);
+        dataSet.setDrawValues(false);
+        dataSet.setLineWidth(2f);
+        dataSet.setMode(LineDataSet.Mode.LINEAR);
+        return dataSet;
     }
 } 
