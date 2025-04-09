@@ -409,37 +409,107 @@ public class UserDetailActivity extends AppCompatActivity
         List<Entry> entriesB = new ArrayList<>();
         List<Entry> entriesC = new ArrayList<>();
         
+        // 创建颜色列表
+        List<Integer> colorsA = new ArrayList<>();
+        List<Integer> colorsB = new ArrayList<>();
+        List<Integer> colorsC = new ArrayList<>();
+        
+        // 当前颜色状态（初始状态：A相红色，B相绿色，C相蓝色）
+        int currentColorA = Color.RED;
+        int currentColorB = Color.GREEN;
+        int currentColorC = Color.BLUE;
+        
         // 处理历史数据
         for (int i = 0; i < historicalData.size(); i++)
         {
             UserData data = historicalData.get(i);
             dates.add(data.getDate());
             
+            // 添加三相电量数据
             entriesA.add(new Entry(i, (float) data.getPhaseAPower()));
             entriesB.add(new Entry(i, (float) data.getPhaseBPower()));
             entriesC.add(new Entry(i, (float) data.getPhaseCPower()));
+            
+            // 查询是否有相位调整记录
+            Map<String, Object> adjustment = dbHelper.getUserPhaseAdjustment(userId, data.getDate());
+            
+            if (adjustment != null)
+            {
+                // 获取旧相位和新相位
+                String oldPhase = (String) adjustment.get("oldPhase");
+                String newPhase = (String) adjustment.get("newPhase");
+                
+                if (oldPhase != null && newPhase != null)
+                {
+                    // 判断调整步数
+                    boolean isOneStep = ((oldPhase.equals("A") && newPhase.equals("B")) ||
+                                        (oldPhase.equals("B") && newPhase.equals("C")) ||
+                                        (oldPhase.equals("C") && newPhase.equals("A")));
+                    
+                    // 一步调整（顺时针）：颜色循环变化
+                    if (isOneStep)
+                    {
+                        // 保存当前颜色
+                        int tempColorA = currentColorA;
+                        int tempColorB = currentColorB;
+                        int tempColorC = currentColorC;
+                        
+                        // 颜色顺时针旋转：红->绿->蓝->红
+                        currentColorA = tempColorC;  // A相的颜色变为原来C相的颜色
+                        currentColorB = tempColorA;  // B相的颜色变为原来A相的颜色
+                        currentColorC = tempColorB;  // C相的颜色变为原来B相的颜色
+                    }
+                    // 两步调整（逆时针）：颜色逆时针变化
+                    else
+                    {
+                        // 保存当前颜色
+                        int tempColorA = currentColorA;
+                        int tempColorB = currentColorB;
+                        int tempColorC = currentColorC;
+                        
+                        // 颜色逆时针旋转：红->蓝->绿->红
+                        currentColorA = tempColorB;  // A相的颜色变为原来B相的颜色
+                        currentColorB = tempColorC;  // B相的颜色变为原来C相的颜色
+                        currentColorC = tempColorA;  // C相的颜色变为原来A相的颜色
+                    }
+                }
+            }
+            
+            // 添加当前颜色
+            colorsA.add(currentColorA);
+            colorsB.add(currentColorB);
+            colorsC.add(currentColorC);
         }
         
         // 创建数据集
-        LineDataSet setA = createLineDataSet(entriesA, "A相", Color.RED);  // 红色
-        LineDataSet setB = createLineDataSet(entriesB, "B相", Color.GREEN);  // 绿色
-        LineDataSet setC = createLineDataSet(entriesC, "C相", Color.BLUE); // 蓝色
+        LineDataSet setA = new LineDataSet(entriesA, "A相");
+        LineDataSet setB = new LineDataSet(entriesB, "B相");
+        LineDataSet setC = new LineDataSet(entriesC, "C相");
+        
+        // 设置数据集基本属性
+        configureDataSet(setA, Color.RED, colorsA);
+        configureDataSet(setB, Color.GREEN, colorsB);
+        configureDataSet(setC, Color.BLUE, colorsC);
+        
+        // 禁用默认图例
+        lineChart.getLegend().setEnabled(false);
         
         // 更新图表
         LineData lineData = new LineData(setA, setB, setC);
         lineChart.setData(lineData);
     }
     
-    private LineDataSet createLineDataSet(List<Entry> entries, String label, int color)
+    // 配置数据集属性
+    private void configureDataSet(LineDataSet dataSet, int defaultColor, List<Integer> colors)
     {
-        LineDataSet dataSet = new LineDataSet(entries, label);
-        dataSet.setColor(color);
-        dataSet.setCircleColor(color);
+        dataSet.setColor(defaultColor);
+        dataSet.setCircleColor(defaultColor);
         dataSet.setDrawCircles(true);
         dataSet.setCircleRadius(4f);
         dataSet.setDrawValues(false);
         dataSet.setLineWidth(2f);
         dataSet.setMode(LineDataSet.Mode.LINEAR);
-        return dataSet;
+        dataSet.setColors(colors);
+        dataSet.setCircleColors(colors);
     }
 } 
