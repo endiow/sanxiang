@@ -92,11 +92,11 @@ public class UserDetailActivity extends AppCompatActivity
         // 配置图表
         lineChart.getDescription().setEnabled(false);
         lineChart.setTouchEnabled(true);
-        lineChart.setDragEnabled(false);   // 禁止拖动
+        lineChart.setDragEnabled(true);    // 允许拖动
         lineChart.setScaleEnabled(false);  // 禁止缩放
         lineChart.setPinchZoom(false);     // 禁止双指缩放
         lineChart.setDrawGridBackground(false);
-        lineChart.setMaxVisibleValueCount(30); // 最大显示30个数据点
+        lineChart.setMaxVisibleValueCount(7); // 最大显示7个数据点
         lineChart.setKeepPositionOnRotation(true); // 旋转时保持位置
         
         // 调整边距
@@ -113,6 +113,7 @@ public class UserDetailActivity extends AppCompatActivity
         xAxis.setLabelRotationAngle(-30);
         xAxis.setTextSize(11f);
         xAxis.setYOffset(5f);
+        xAxis.setLabelCount(7, true); // 设置X轴标签数为7
 
         // 配置Y轴
         YAxis leftAxis = lineChart.getAxisLeft();
@@ -167,43 +168,53 @@ public class UserDetailActivity extends AppCompatActivity
             return false;
         });
 
-        // 设置前一天按钮点击事件
+        // 设置前一天按钮点击事件 - 翻页查看前面的数据
         findViewById(R.id.btnPrevDay).setOnClickListener(v -> 
         {
-            String currentDate = etDate.getText().toString().trim();
-            if (DateValidator.isValidDateFormat(currentDate, etDate))
+            float currentVisibleX = lineChart.getLowestVisibleX();
+            if (currentVisibleX > 0) 
             {
-                int currentIndex = dates.indexOf(currentDate);
-                if (currentIndex > 0)
+                // 向前移动一个数据点
+                lineChart.moveViewToX(currentVisibleX - 1);
+                
+                // 更新当前显示的日期
+                int newIndex = (int)lineChart.getLowestVisibleX();
+                if (newIndex >= 0 && newIndex < dates.size()) 
                 {
-                    String prevDate = dates.get(currentIndex - 1);
-                    etDate.setText(prevDate);
-                    highlightDate(prevDate);
+                    String newDate = dates.get(newIndex);
+                    etDate.setText(newDate);
+                    updatePowerInfo(newDate);
                 }
-                else
-                {
-                    Toast.makeText(this, "已经是最早的日期", Toast.LENGTH_SHORT).show();
-                }
+            }
+            else
+            {
+                Toast.makeText(this, "已经是最早的日期", Toast.LENGTH_SHORT).show();
             }
         });
 
-        // 设置后一天按钮点击事件
+        // 设置后一天按钮点击事件 - 翻页查看后面的数据
         findViewById(R.id.btnNextDay).setOnClickListener(v -> 
         {
-            String currentDate = etDate.getText().toString().trim();
-            if (DateValidator.isValidDateFormat(currentDate, etDate))
+            float currentVisibleX = lineChart.getLowestVisibleX();
+            float maxVisibleX = lineChart.getHighestVisibleX();
+            
+            if (maxVisibleX < dates.size() - 1) 
             {
-                int currentIndex = dates.indexOf(currentDate);
-                if (currentIndex < dates.size() - 1)
+                // 向后移动一个数据点
+                lineChart.moveViewToX(currentVisibleX + 1);
+                
+                // 更新当前显示的日期
+                int newIndex = (int)lineChart.getLowestVisibleX();
+                if (newIndex >= 0 && newIndex < dates.size()) 
                 {
-                    String nextDate = dates.get(currentIndex + 1);
-                    etDate.setText(nextDate);
-                    highlightDate(nextDate);
+                    String newDate = dates.get(newIndex);
+                    etDate.setText(newDate);
+                    updatePowerInfo(newDate);
                 }
-                else
-                {
-                    Toast.makeText(this, "已经是最新的日期", Toast.LENGTH_SHORT).show();
-                }
+            }
+            else
+            {
+                Toast.makeText(this, "已经是最新的日期", Toast.LENGTH_SHORT).show();
             }
         });
     }
@@ -395,7 +406,36 @@ public class UserDetailActivity extends AppCompatActivity
         }
 
         // 设置X轴标签
-        lineChart.getXAxis().setValueFormatter(new IndexAxisValueFormatter(dates));
+        XAxis xAxis = lineChart.getXAxis();
+        xAxis.setValueFormatter(new IndexAxisValueFormatter(dates));
+        xAxis.setLabelCount(7); // 设置标签数量为7
+        xAxis.setGranularity(1f); // 确保值之间的最小距离
+        xAxis.setPosition(XAxis.XAxisPosition.BOTTOM);
+        xAxis.setLabelRotationAngle(-45); // 旋转角度，避免重叠
+        xAxis.setDrawAxisLine(true);
+        xAxis.setDrawGridLines(false);
+        xAxis.setTextSize(11f);
+        
+        // 调整边距，确保标签有足够空间
+        lineChart.setExtraBottomOffset(30f);
+        
+        if (dates.size() > 0) {
+            // 设置图表可见范围为7天
+            lineChart.setVisibleXRangeMaximum(7);
+            
+            // 默认显示最近的7天数据
+            if (dates.size() > 7) {
+                lineChart.moveViewToX(dates.size() - 7);
+            } else {
+                lineChart.moveViewToX(0);
+            }
+        }
+        
+        // 启用拖动，禁用缩放
+        lineChart.setDragEnabled(true);
+        lineChart.setScaleEnabled(false);
+        
+        // 刷新图表
         lineChart.invalidate();
     }
 
