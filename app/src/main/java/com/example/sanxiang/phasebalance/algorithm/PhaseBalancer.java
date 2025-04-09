@@ -35,6 +35,12 @@ public class PhaseBalancer
     private Map<String, List<Integer>> branchGroupUserIndices;  // 支线组中用户的索引
     private double totalPower;                     // 总功率
     
+    /**
+     * 使用固定种子的随机数生成器，保证每次点击调相按钮时
+     * 生成的初始化种群完全相同，从而保证算法结果的一致性
+     */
+    private final Random fixedRandom = new Random(123456789L);
+
     public PhaseBalancer(List<User> users, List<BranchGroup> branchGroups) 
     {
         this.users = users;
@@ -133,6 +139,10 @@ public class PhaseBalancer
     {
         try 
         {
+            // 注意：本算法使用固定种子的随机数生成器(fixedRandom)
+            // 这确保每次调用此方法时生成的初始种群完全相同
+            // 从而使得多次运行算法产生的结果大致相同
+            
             // 增加最大重试次数，确保能找到满足条件的解
             final int MAX_TOTAL_ATTEMPTS = 3; // 最大总尝试次数
             
@@ -419,7 +429,7 @@ public class PhaseBalancer
                 
                 // 随机选择要改变的用户数量（在最小值和最大值之间）
                 int minChangeUsers = (int)(users.size() * (initialUnbalanceRate > 25.0 ? 0.1 : 0.05));
-                int changeCount = minChangeUsers + new Random().nextInt(maxChangeUsers - minChangeUsers + 1);
+                int changeCount = minChangeUsers + fixedRandom.nextInt(maxChangeUsers - minChangeUsers + 1);
                 
                 // 清空相位电量统计
                 Arrays.fill(additionalSolution.phasePowers, 0.0);
@@ -446,7 +456,7 @@ public class PhaseBalancer
                 }
                 
                 // 随机打乱选择单元
-                Collections.shuffle(selectionUnits);
+                Collections.shuffle(selectionUnits, fixedRandom);
                 
                 // 进行选择和调整
                 int remainingChanges = changeCount;
@@ -470,7 +480,7 @@ public class PhaseBalancer
                         }
                         
                         // 为整个支线组选择新相位
-                        byte newPhase = (byte)(1 + new Random().nextInt(3));
+                        byte newPhase = (byte)(1 + fixedRandom.nextInt(3));
                         
                         // 应用相位调整
                         for (int index : groupIndices) 
@@ -493,7 +503,7 @@ public class PhaseBalancer
                         
                         if (user.isPowerPhase()) 
                         {
-                            byte moves = (byte)(1 + new Random().nextInt(2));
+                            byte moves = (byte)(1 + fixedRandom.nextInt(2));
                             additionalSolution.phases[idx] = user.getCurrentPhase();  // 保持原相位不变
                             additionalSolution.moves[idx] = moves;
                             additionalSolution.changedUsersCount++;
@@ -504,7 +514,7 @@ public class PhaseBalancer
                             byte newPhase;
                             do 
                             {
-                                newPhase = (byte)(1 + new Random().nextInt(3));
+                                newPhase = (byte)(1 + fixedRandom.nextInt(3));
                             } while (newPhase == currentPhase);
                             additionalSolution.phases[idx] = newPhase;
                             additionalSolution.moves[idx] = 1;
@@ -668,7 +678,7 @@ public class PhaseBalancer
         while (resultPopulation.size() < populationSize) 
         {
             // 随机选择一个有效解进行复制
-            Solution baseSolution = solutionPool.get(new Random().nextInt(solutionPool.size()));
+            Solution baseSolution = solutionPool.get(fixedRandom.nextInt(solutionPool.size()));
             resultPopulation.add(new Solution(baseSolution));
         }
         
@@ -679,7 +689,7 @@ public class PhaseBalancer
     private void performLightMutation(Solution solution) 
     {
         // 随机选择1-2个用户进行调整
-        int mutationCount = 1 + new Random().nextInt(2);
+        int mutationCount = 1 + fixedRandom.nextInt(2);
         Set<Integer> mutatedIndices = new HashSet<>();
         
         for(int i = 0; i < mutationCount; i++) 
@@ -688,7 +698,7 @@ public class PhaseBalancer
             int userIndex;
             do 
             {
-                userIndex = new Random().nextInt(users.size());
+                userIndex = fixedRandom.nextInt(users.size());
             } while(mutatedIndices.contains(userIndex));
             
             mutatedIndices.add(userIndex);
@@ -701,7 +711,7 @@ public class PhaseBalancer
                 byte newMoves;
                 do 
                 {
-                    newMoves = (byte)(1 + new Random().nextInt(2));
+                    newMoves = (byte)(1 + fixedRandom.nextInt(2));
                 } while(newMoves == currentMoves);
                 solution.moves[userIndex] = newMoves;
             } 
@@ -712,7 +722,7 @@ public class PhaseBalancer
                 byte newPhase;
                 do 
                 {
-                    newPhase = (byte)(1 + new Random().nextInt(3));
+                    newPhase = (byte)(1 + fixedRandom.nextInt(3));
                 } while(newPhase == currentPhase);
                 solution.phases[userIndex] = newPhase;
                 solution.moves[userIndex] = 1;
@@ -928,7 +938,7 @@ public class PhaseBalancer
                 for (int i = 0; i < 4; i++) 
                 {
                     tournament.add(sortedPopulation.get(
-                        (int)(Math.random() * sortedPopulation.size())
+                        fixedRandom.nextInt(sortedPopulation.size())
                     ));
                 }
                 
@@ -964,13 +974,13 @@ public class PhaseBalancer
             Solution parent1 = selected.get(i);
             Solution parent2 = selected.get(i + 1);
             
-            if (Math.random() < CROSSOVER_RATE) 
+            if (fixedRandom.nextDouble() < CROSSOVER_RATE) 
             {
                 Solution child1 = new Solution(parent1);
                 Solution child2 = new Solution(parent2);
                 
                 // 随机选择交叉点
-                int crossPoint = new Random().nextInt(users.size());
+                int crossPoint = fixedRandom.nextInt(users.size());
                 
                 // 创建已处理的支线组集合
                 Set<String> processedGroups = new HashSet<>();
@@ -1065,7 +1075,7 @@ public class PhaseBalancer
     {
         for (Solution solution : offspring) 
         {
-            if (Math.random() < MUTATION_RATE) 
+            if (fixedRandom.nextDouble() < MUTATION_RATE) 
             {
                 // 记录每个支线组的相位变化
                 Map<String, Byte> groupPhaseChanges = new HashMap<>();
@@ -1199,16 +1209,16 @@ public class PhaseBalancer
         }
         
         // 随机决定是变异普通用户还是动力用户
-        boolean mutatePowerUsers = new Random().nextBoolean();
+        boolean mutatePowerUsers = fixedRandom.nextBoolean();
         
         if (mutatePowerUsers && changedPowerUsers.size() >= 2) 
         {
             // 变异动力用户
-            int idx1 = new Random().nextInt(changedPowerUsers.size());
+            int idx1 = fixedRandom.nextInt(changedPowerUsers.size());
             int idx2;
             do 
             {
-                idx2 = new Random().nextInt(changedPowerUsers.size());
+                idx2 = fixedRandom.nextInt(changedPowerUsers.size());
             } while (idx2 == idx1);
             
             int user1 = changedPowerUsers.get(idx1);
@@ -1227,11 +1237,11 @@ public class PhaseBalancer
         else if (!mutatePowerUsers && changedNormalUsers.size() >= 2) 
         {
             // 变异普通用户
-            int idx1 = new Random().nextInt(changedNormalUsers.size());
+            int idx1 = fixedRandom.nextInt(changedNormalUsers.size());
             int idx2;
             do 
             {
-                idx2 = new Random().nextInt(changedNormalUsers.size());
+                idx2 = fixedRandom.nextInt(changedNormalUsers.size());
             } while (idx2 == idx1);
             
             int user1 = changedNormalUsers.get(idx1);
@@ -1277,7 +1287,7 @@ public class PhaseBalancer
         }
         
         // 随机选择一个变异单元
-        int selectedIndex = new Random().nextInt(mutationUnits.size());
+        int selectedIndex = fixedRandom.nextInt(mutationUnits.size());
         Object selectedUnit = mutationUnits.get(selectedIndex);
         
         if (selectedUnit instanceof Map.Entry) 
@@ -1302,7 +1312,7 @@ public class PhaseBalancer
             if (!groupChanged && groupIndices.size() <= remainingChanges) 
             {
                 // 随机选择新相位
-                byte newPhase = (byte)(1 + new Random().nextInt(3));
+                byte newPhase = (byte)(1 + fixedRandom.nextInt(3));
                 
                 // 应用变异到整个支线组
                 for (int index : groupIndices) 
