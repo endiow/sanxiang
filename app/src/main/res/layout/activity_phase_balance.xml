@@ -92,17 +92,28 @@
                         android:layout_height="wrap_content"
                         android:textSize="14sp"/>
 
+                    <Button
+                        android:id="@+id/btnApplyResult"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="按此结果调整"
+                        android:layout_marginTop="16dp"
+                        android:visibility="gone"/>
+
                     <View
+                        android:id="@+id/divider"
                         android:layout_width="match_parent"
                         android:layout_height="1dp"
                         android:background="#DDDDDD"
                         android:layout_marginTop="8dp"
-                        android:layout_marginBottom="8dp"/>
+                        android:layout_marginBottom="8dp"
+                        android:visibility="gone"/>
 
                     <androidx.recyclerview.widget.RecyclerView
                         android:id="@+id/rvOptimizedGroups"
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content"/>
+                        android:layout_height="wrap_content"
+                        android:visibility="gone"/>
 
                 </LinearLayout>
 

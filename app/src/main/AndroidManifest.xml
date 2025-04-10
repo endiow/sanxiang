@@ -48,6 +48,11 @@
             android:label="优化结果"
             android:exported="false">
         </activity>
+        <activity
+            android:name=".phasebalance.PhaseAdjustmentStrategyActivity"
+            android:label="调相策略"
+            android:exported="false">
+        </activity>
     </application>
 
 </manifest>

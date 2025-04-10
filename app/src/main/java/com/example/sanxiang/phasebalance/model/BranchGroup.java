@@ -1,7 +1,11 @@
 package com.example.sanxiang.phasebalance.model;
 
-public class BranchGroup 
+import java.io.Serializable;
+
+public class BranchGroup implements Serializable
 {
+    private static final long serialVersionUID = 1L;
+    
     private String routeNumber;
     private String branchNumber;
     private int userCount;

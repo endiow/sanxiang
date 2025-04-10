@@ -41,6 +41,7 @@ public class PhaseBalanceActivity extends AppCompatActivity
     private List<BranchGroup> branchGroups;
     private List<BranchGroup> optimizedGroups;
     private Button btnOptimize;
+    private Button btnApplyResult;
     private TextView tvResultStats;
     private FloatingActionButton fabAdd;
     private FloatingActionButton fabDelete;
@@ -51,6 +52,8 @@ public class PhaseBalanceActivity extends AppCompatActivity
     private PhaseBalancer.Solution solution;
     private PhaseBalancer phaseBalancer;  // 添加PhaseBalancer引用
     private volatile boolean isOptimizing = false;  // 添加优化状态标志
+    private View divider; // 添加分隔线引用
+    private static final int REQUEST_CODE_PHASE_ADJUSTMENT = 1001;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) 
@@ -73,12 +76,14 @@ public class PhaseBalanceActivity extends AppCompatActivity
         rvBranchGroups = findViewById(R.id.rvBranchGroups);
         rvOptimizedGroups = findViewById(R.id.rvOptimizedGroups);
         btnOptimize = findViewById(R.id.btnOptimize);
+        btnApplyResult = findViewById(R.id.btnApplyResult);
         tvResultStats = findViewById(R.id.tvResultStats);
         fabAdd = findViewById(R.id.fabAdd);
         fabDelete = findViewById(R.id.fabDelete);
         tvSelectedCount = findViewById(R.id.tvSelectedCount);
         cardDelete = findViewById(R.id.cardDelete);
         btnDelete = findViewById(R.id.btnDelete);
+        divider = findViewById(R.id.divider);
         
         adapter = new BranchGroupAdapter(branchGroups, group -> {
             // 处理支线组点击事件
@@ -214,6 +219,40 @@ public class PhaseBalanceActivity extends AppCompatActivity
     {
         btnOptimize.setOnClickListener(v -> optimizePhases());
         fabAdd.setOnClickListener(v -> showAddBranchGroupDialog());
+        
+        btnApplyResult.setOnClickListener(v -> {
+            if (solution == null || users == null || users.isEmpty()) {
+                Toast.makeText(this, "无有效优化结果", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            
+            try {
+                // 将solution中的phase和moves数组转换为可序列化的基本类型数组
+                byte[] solutionPhases = new byte[users.size()];
+                byte[] solutionMoves = new byte[users.size()];
+                for (int i = 0; i < users.size(); i++) {
+                    solutionPhases[i] = solution.getPhase(i);
+                    solutionMoves[i] = solution.getMoves(i);
+                }
+                
+                // 创建intent并传递数据
+                Intent intent = new Intent(this, PhaseAdjustmentStrategyActivity.class);
+                
+                // 使用ArrayList包装用户列表，确保序列化
+                ArrayList<User> serializableUsers = new ArrayList<>(users);
+                intent.putExtra(PhaseAdjustmentStrategyActivity.EXTRA_USERS, serializableUsers);
+                intent.putExtra(PhaseAdjustmentStrategyActivity.EXTRA_SOLUTION_PHASES, solutionPhases);
+                intent.putExtra(PhaseAdjustmentStrategyActivity.EXTRA_SOLUTION_MOVES, solutionMoves);
+                intent.putExtra(PhaseAdjustmentStrategyActivity.EXTRA_PHASE_POWERS, solution.getPhasePowers());
+                intent.putExtra(PhaseAdjustmentStrategyActivity.EXTRA_UNBALANCE_RATE, solution.getUnbalanceRate());
+                
+                startActivityForResult(intent, REQUEST_CODE_PHASE_ADJUSTMENT);
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.e("PhaseBalanceActivity", "启动调整策略界面失败: " + e.getMessage());
+                Toast.makeText(this, "启动调整策略界面失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
         
         fabDelete.setOnClickListener(v -> {
             if (adapter.isSelectionMode()) 
@@ -607,6 +646,11 @@ public class PhaseBalanceActivity extends AppCompatActivity
             // 设置统计信息
             tvResultStats.setText(stats.toString());
             
+            // 显示"按此结果调整"按钮，但默认隐藏详细分组
+            btnApplyResult.setVisibility(View.VISIBLE);
+            divider.setVisibility(View.GONE);
+            rvOptimizedGroups.setVisibility(View.GONE);
+            
             // 清空并重新添加优化后的支线组
             optimizedGroups.clear();
             
@@ -717,6 +761,32 @@ public class PhaseBalanceActivity extends AppCompatActivity
         {
             // 否则执行默认的返回操作
             super.onBackPressed();
+        }
+    }
+    
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        
+        if (requestCode == REQUEST_CODE_PHASE_ADJUSTMENT && resultCode == RESULT_OK) {
+            Toast.makeText(this, "相位调整已成功应用", Toast.LENGTH_SHORT).show();
+            
+            // 重置优化结果
+            users = null;
+            solution = null;
+            
+            // 清除UI显示
+            tvResultStats.setText("");
+            optimizedGroups.clear();
+            adapter.notifyDataSetChanged();
+            
+            // 隐藏相关UI元素
+            btnApplyResult.setVisibility(View.GONE);
+            divider.setVisibility(View.GONE);
+            rvOptimizedGroups.setVisibility(View.GONE);
+            
+            // 刷新支线组数据
+            loadBranchGroups();
         }
     }
 } 
