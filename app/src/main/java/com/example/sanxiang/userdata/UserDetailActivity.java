@@ -2,6 +2,7 @@ package com.example.sanxiang.userdata;
 
 import android.graphics.Color;
 import android.os.Bundle;
+import android.view.MotionEvent;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -20,7 +21,9 @@ import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter;
 import com.github.mikephil.charting.highlight.Highlight;
+import com.github.mikephil.charting.listener.OnChartGestureListener;
 import com.github.mikephil.charting.listener.OnChartValueSelectedListener;
+import com.github.mikephil.charting.listener.ChartTouchListener;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -149,6 +152,57 @@ public class UserDetailActivity extends AppCompatActivity
                 }
             }
         });
+        
+        // 添加图表滚动监听，确保日期显示与图表可见区域同步
+        lineChart.setOnChartGestureListener(new OnChartGestureListener() 
+        {
+            @Override
+            public void onChartGestureStart(MotionEvent me, ChartTouchListener.ChartGesture lastPerformedGesture) {}
+            
+            @Override
+            public void onChartGestureEnd(MotionEvent me, ChartTouchListener.ChartGesture lastPerformedGesture) 
+            {
+                // 当用户结束滚动手势时更新日期显示
+                if (lastPerformedGesture == ChartTouchListener.ChartGesture.DRAG || 
+                    lastPerformedGesture == ChartTouchListener.ChartGesture.FLING) 
+                {
+                    syncDateWithVisibleRange();
+                }
+            }
+            
+            @Override
+            public void onChartLongPressed(MotionEvent me) {}
+            
+            @Override
+            public void onChartDoubleTapped(MotionEvent me) {}
+            
+            @Override
+            public void onChartSingleTapped(MotionEvent me) {}
+            
+            @Override
+            public void onChartFling(MotionEvent me1, MotionEvent me2, float velocityX, float velocityY) {}
+            
+            @Override
+            public void onChartScale(MotionEvent me, float scaleX, float scaleY) {}
+            
+            @Override
+            public void onChartTranslate(MotionEvent me, float dX, float dY) {}
+        });
+    }
+
+    // 同步日期显示与图表可见区域
+    private void syncDateWithVisibleRange() 
+    {
+        if (dates != null && !dates.isEmpty()) 
+        {
+            int firstVisibleIndex = (int)lineChart.getLowestVisibleX();
+            if (firstVisibleIndex >= 0 && firstVisibleIndex < dates.size()) 
+            {
+                String newDate = dates.get(firstVisibleIndex);
+                etDate.setText(newDate);
+                updatePowerInfo(newDate);
+            }
+        }
     }
 
     private void setupDateInput()
@@ -168,52 +222,52 @@ public class UserDetailActivity extends AppCompatActivity
             return false;
         });
 
-        // 设置前一天按钮点击事件 - 翻页查看前面的数据
+        // 设置前一天按钮点击事件 - 显示前一天的数据
         findViewById(R.id.btnPrevDay).setOnClickListener(v -> 
         {
-            float currentVisibleX = lineChart.getLowestVisibleX();
-            if (currentVisibleX > 0) 
-            {
-                // 向前移动一个数据点
-                lineChart.moveViewToX(currentVisibleX - 1);
-                
-                // 更新当前显示的日期
-                int newIndex = (int)lineChart.getLowestVisibleX();
-                if (newIndex >= 0 && newIndex < dates.size()) 
-                {
-                    String newDate = dates.get(newIndex);
-                    etDate.setText(newDate);
-                    updatePowerInfo(newDate);
+            // 获取当前选中日期的索引
+            int currentIndex = -1;
+            String currentDate = etDate.getText().toString().trim();
+            
+            for (int i = 0; i < dates.size(); i++) {
+                if (dates.get(i).equals(currentDate)) {
+                    currentIndex = i;
+                    break;
                 }
             }
-            else
-            {
+            
+            // 如果找到当前日期，并且不是第一个日期
+            if (currentIndex > 0) {
+                // 显示前一天数据
+                String prevDate = dates.get(currentIndex - 1);
+                etDate.setText(prevDate);
+                highlightDate(prevDate);
+            } else {
                 Toast.makeText(this, "已经是最早的日期", Toast.LENGTH_SHORT).show();
             }
         });
 
-        // 设置后一天按钮点击事件 - 翻页查看后面的数据
+        // 设置后一天按钮点击事件 - 显示后一天的数据
         findViewById(R.id.btnNextDay).setOnClickListener(v -> 
         {
-            float currentVisibleX = lineChart.getLowestVisibleX();
-            float maxVisibleX = lineChart.getHighestVisibleX();
+            // 获取当前选中日期的索引
+            int currentIndex = -1;
+            String currentDate = etDate.getText().toString().trim();
             
-            if (maxVisibleX < dates.size() - 1) 
-            {
-                // 向后移动一个数据点
-                lineChart.moveViewToX(currentVisibleX + 1);
-                
-                // 更新当前显示的日期
-                int newIndex = (int)lineChart.getLowestVisibleX();
-                if (newIndex >= 0 && newIndex < dates.size()) 
-                {
-                    String newDate = dates.get(newIndex);
-                    etDate.setText(newDate);
-                    updatePowerInfo(newDate);
+            for (int i = 0; i < dates.size(); i++) {
+                if (dates.get(i).equals(currentDate)) {
+                    currentIndex = i;
+                    break;
                 }
             }
-            else
-            {
+            
+            // 如果找到当前日期，并且不是最后一个日期
+            if (currentIndex >= 0 && currentIndex < dates.size() - 1) {
+                // 显示后一天数据
+                String nextDate = dates.get(currentIndex + 1);
+                etDate.setText(nextDate);
+                highlightDate(nextDate);
+            } else {
                 Toast.makeText(this, "已经是最新的日期", Toast.LENGTH_SHORT).show();
             }
         });
@@ -256,10 +310,26 @@ public class UserDetailActivity extends AppCompatActivity
 
             if (index >= 0)
             {
+                // 高亮选中的日期点
                 lineChart.highlightValue(index, 0);
+                
+                // 更新电量信息
                 updatePowerInfo(standardDate);
-                // 确保高亮的点在可见范围内
-                lineChart.moveViewToX(Math.max(0, index - 2));
+                
+                // 计算可见范围，确保高亮的点居中显示
+                float visibleRange = lineChart.getVisibleXRange();
+                float halfRange = visibleRange / 2;
+                float newX = Math.max(0, index - halfRange);
+                
+                // 如果靠近数据末尾，确保不超出范围
+                if (newX + visibleRange > dates.size())
+                {
+                    newX = Math.max(0, dates.size() - visibleRange);
+                }
+                
+                // 移动视图到计算的位置
+                lineChart.moveViewToX(newX);
+                lineChart.invalidate();
             }
             else
             {
@@ -426,6 +496,15 @@ public class UserDetailActivity extends AppCompatActivity
             // 默认显示最近的7天数据
             if (dates.size() > 7) {
                 lineChart.moveViewToX(dates.size() - 7);
+                
+                // 同步更新当前显示的日期为范围内第一个日期
+                if (dates.size() > 0) {
+                    int firstVisibleIndex = (int)lineChart.getLowestVisibleX();
+                    if (firstVisibleIndex >= 0 && firstVisibleIndex < dates.size()) {
+                        etDate.setText(dates.get(firstVisibleIndex));
+                        updatePowerInfo(dates.get(firstVisibleIndex));
+                    }
+                }
             } else {
                 lineChart.moveViewToX(0);
             }
