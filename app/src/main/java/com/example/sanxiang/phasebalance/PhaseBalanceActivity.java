@@ -106,6 +106,10 @@ public class PhaseBalanceActivity extends AppCompatActivity
                 
                 // 获取需要调整的用户ID列表
                 ArrayList<String> adjustedUserIds = new ArrayList<>();
+                
+                // 添加调试日志
+                Log.d("PhaseBalanceActivity", "检查回路" + group.getRouteNumber() + "支线" + group.getBranchNumber() + "的用户调整情况");
+                
                 for (int i = 0; i < users.size(); i++) 
                 {
                     User user = users.get(i);
@@ -114,9 +118,26 @@ public class PhaseBalanceActivity extends AppCompatActivity
                         group.getBranchNumber().equals(user.getBranchNumber())) 
                     {
                         byte newPhase = solution.getPhase(i);
-                        if (newPhase != user.getCurrentPhase()) 
+                        byte moves = solution.getMoves(i);
+                        boolean isChanged = false;
+                        
+                        // 修复判断逻辑：同时考虑普通用户的相位变化和动力用户的moves值
+                        if (user.isPowerPhase()) {
+                            // 动力用户通过moves判断
+                            isChanged = moves > 0;
+                        } else {
+                            // 普通用户通过相位变化判断
+                            isChanged = newPhase != user.getCurrentPhase();
+                        }
+                        
+                        if (isChanged) 
                         {
                             adjustedUserIds.add(user.getUserId());
+                            // 添加调试日志
+                            Log.d("PhaseBalanceActivity", String.format(
+                                "需要调整的用户: %s, 是否动力用户: %b, 原相位: %s, 新相位: %d, 移动次数: %d",
+                                user.getUserId(), user.isPowerPhase(), user.getCurrentPhase(), newPhase, moves
+                            ));
                         }
                     }
                 }
@@ -132,6 +153,12 @@ public class PhaseBalanceActivity extends AppCompatActivity
                 );
                 byte[] optimizedPhases = new byte[branchUsers.size()];
                 byte[] phaseMoves = new byte[branchUsers.size()];  // 添加移动次数数组
+                
+                // 添加调试日志
+                Log.d("PhaseBalanceActivity", String.format(
+                    "支线总用户数: %d, 需要调整的用户数: %d", branchUsers.size(), adjustedUserIds.size()
+                ));
+                
                 for (int i = 0; i < branchUsers.size(); i++) 
                 {
                     User branchUser = branchUsers.get(i);
@@ -535,7 +562,7 @@ public class PhaseBalanceActivity extends AppCompatActivity
                 byte newPhase = solution.getPhase(i);
                 byte moves = solution.getMoves(i);
                 
-                // 检查用户是否发生变化
+                // 检查用户是否发生变化 - 修复前的判断逻辑
                 boolean isChanged = false;
                 if (user.isPowerPhase()) 
                 {
@@ -583,13 +610,20 @@ public class PhaseBalanceActivity extends AppCompatActivity
             // 清空并重新添加优化后的支线组
             optimizedGroups.clear();
             
-            // 按支线组分组显示用户
+            // 按支线组分组显示用户 - 解决统计不匹配问题
             Map<String, Map<String, Integer>> groupedUsers = new HashMap<>();
+            
+            // 添加调试日志
+            Log.d("PhaseBalanceActivity", "开始统计各支线调整用户数");
+            
             for (int i = 0; i < users.size(); i++) 
             {
                 User user = users.get(i);
                 byte newPhase = solution.getPhase(i);
                 byte moves = solution.getMoves(i);
+                
+                String routeNumber = user.getRouteNumber();
+                String branchNumber = user.getBranchNumber();
                 
                 // 使用与前面相同的逻辑判断用户是否发生变化
                 boolean isChanged = false;
@@ -604,8 +638,12 @@ public class PhaseBalanceActivity extends AppCompatActivity
                 
                 if (isChanged) 
                 {
-                    String routeNumber = user.getRouteNumber();
-                    String branchNumber = user.getBranchNumber();
+                    // 添加调试日志
+                    Log.d("PhaseBalanceActivity", String.format(
+                        "调整用户: %s, 回路: %s, 支线: %s, 原相位: %s, 新相位: %s, 移动次数: %d",
+                        user.getUserId(), routeNumber, branchNumber, 
+                        user.getCurrentPhase(), newPhase, moves
+                    ));
                     
                     groupedUsers.computeIfAbsent(routeNumber, k -> new HashMap<>())
                                .merge(branchNumber, 1, Integer::sum);
@@ -617,10 +655,17 @@ public class PhaseBalanceActivity extends AppCompatActivity
             for (Map.Entry<String, Map<String, Integer>> routeEntry : groupedUsers.entrySet()) 
             {
                 String routeNumber = routeEntry.getKey();
+                
                 for (Map.Entry<String, Integer> branchEntry : routeEntry.getValue().entrySet()) 
                 {
                     String branchNumber = branchEntry.getKey();
                     int userCount = branchEntry.getValue();
+                    
+                    // 添加调试日志
+                    Log.d("PhaseBalanceActivity", String.format(
+                        "支线统计: 回路: %s, 支线: %s, 调整用户数: %d",
+                        routeNumber, branchNumber, userCount
+                    ));
                     
                     BranchGroup group = new BranchGroup(routeNumber, branchNumber);
                     group.setUserCount(userCount);

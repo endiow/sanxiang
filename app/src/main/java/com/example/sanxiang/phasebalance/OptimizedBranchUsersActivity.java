@@ -1,6 +1,7 @@
 package com.example.sanxiang.phasebalance;
 
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
@@ -90,8 +91,20 @@ public class OptimizedBranchUsersActivity extends AppCompatActivity
             newPhases.clear();
             this.phaseMoves.clear();
             
+            // 添加调试日志
+            Log.d("OptimizedBranchUsersActivity", String.format(
+                "加载回路%s支线%s的优化用户，需要调整的用户数量: %d", 
+                routeNumber, branchNumber, adjustedUserIds.size()
+            ));
+            
             // 获取该支线的所有用户
             List<User> branchUsers = dbHelper.getUsersByRouteBranch(routeNumber, branchNumber);
+            
+            // 添加调试日志
+            Log.d("OptimizedBranchUsersActivity", String.format(
+                "该支线总用户数: %d", branchUsers.size()
+            ));
+            
             if (!branchUsers.isEmpty()) 
             {
                 // 只显示需要调整的用户
@@ -106,8 +119,19 @@ public class OptimizedBranchUsersActivity extends AppCompatActivity
                         byte moves = phaseMoves[userIndex];
                         newPhases.add(newPhase);
                         this.phaseMoves.add(moves);
+                        
+                        // 添加调试日志
+                        Log.d("OptimizedBranchUsersActivity", String.format(
+                            "添加调整用户: %s, 原相位: %s, 新相位: %d, 移动次数: %d",
+                            user.getUserId(), user.getCurrentPhase(), newPhase, moves
+                        ));
                     }
                 }
+                
+                // 添加调试日志
+                Log.d("OptimizedBranchUsersActivity", String.format(
+                    "最终显示的调整用户数量: %d", users.size()
+                ));
                 
                 // 更新用户列表
                 adapter.notifyDataSetChanged();
