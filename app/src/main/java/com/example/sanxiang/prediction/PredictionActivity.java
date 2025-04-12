@@ -12,6 +12,8 @@ import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.app.ProgressDialog;
+import android.widget.Button;
+import android.content.Intent;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -22,6 +24,7 @@ import com.example.sanxiang.prediction.adapter.PredictionAdapter;
 import com.example.sanxiang.prediction.model.PredictionResult;
 import com.example.sanxiang.userdata.model.UserData;
 import com.example.sanxiang.db.DatabaseHelper;
+import com.example.sanxiang.phasebalance.PhaseBalanceActivity;
 import com.example.sanxiang.util.UnbalanceCalculator;
 import com.chaquo.python.PyObject;
 import com.chaquo.python.Python;
@@ -46,6 +49,8 @@ public class PredictionActivity extends AppCompatActivity
     private double totalPhaseA;
     private double totalPhaseB;
     private double totalPhaseC;
+
+    private Button btnAdjustPhaseByPrediction;
 
     @Override
     protected void onCreate(Bundle savedInstanceState)
@@ -122,6 +127,50 @@ public class PredictionActivity extends AppCompatActivity
                 adapter.filter(searchId);
             }
         });
+
+        btnAdjustPhaseByPrediction = findViewById(R.id.btnAdjustPhaseByPrediction);
+        btnAdjustPhaseByPrediction.setOnClickListener(v -> adjustPhaseByPrediction());
+    }
+
+    // 点击"按照预测值调整相位"按钮的处理方法
+    private void adjustPhaseByPrediction()
+    {
+        // 检查是否有预测数据
+        if (adapter == null || adapter.getPredictions().isEmpty()) 
+        {
+            Toast.makeText(this, "无预测数据可用于调整相位", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 创建进度对话框
+        ProgressDialog progressDialog = new ProgressDialog(this);
+        progressDialog.setMessage("正在准备相位调整数据...");
+        progressDialog.setCancelable(false);
+        progressDialog.show();
+
+        // 在后台线程处理数据
+        new Thread(() -> {
+            try {
+                // 准备数据 - 获取预测结果列表
+                ArrayList<PredictionResult> predictions = new ArrayList<>(adapter.getPredictions());
+                
+                // 所有预测数据准备完毕，启动相位平衡活动
+                runOnUiThread(() -> {
+                    progressDialog.dismiss();
+                    Intent intent = new Intent(PredictionActivity.this, PhaseBalanceActivity.class);
+                    intent.putExtra("USE_PREDICTION", true);
+                    intent.putExtra("PREDICTION_DATA", predictions);
+                    startActivity(intent);
+                });
+                
+            } catch (Exception e) {
+                e.printStackTrace();
+                runOnUiThread(() -> {
+                    progressDialog.dismiss();
+                    Toast.makeText(PredictionActivity.this, "准备数据时出错: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                });
+            }
+        }).start();
     }
 
     private void loadPredictions()

@@ -1,6 +1,8 @@
 package com.example.sanxiang.prediction.model;
 
-public class PredictionResult
+import java.io.Serializable;
+
+public class PredictionResult implements Serializable
 {
     private String userId;
     private String userName;

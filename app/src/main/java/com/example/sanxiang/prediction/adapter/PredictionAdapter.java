@@ -35,6 +35,11 @@ public class PredictionAdapter extends RecyclerView.Adapter<PredictionAdapter.Vi
         notifyDataSetChanged();
     }
 
+    public List<PredictionResult> getPredictions()
+    {
+        return predictions;
+    }
+
     public void filter(String searchId)
     {
         if (searchId == null || searchId.trim().isEmpty())

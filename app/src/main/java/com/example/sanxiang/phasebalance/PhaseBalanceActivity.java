@@ -28,6 +28,7 @@ import com.example.sanxiang.phasebalance.algorithm.*;
 import com.example.sanxiang.phasebalance.model.*;
 import com.example.sanxiang.userdata.model.UserData;
 import com.example.sanxiang.db.DatabaseHelper;
+import com.example.sanxiang.prediction.model.PredictionResult;
 
 import java.util.*;
 
@@ -69,6 +70,14 @@ public class PhaseBalanceActivity extends AppCompatActivity
         initializeViews();
         setupListeners();
         loadBranchGroups();
+        
+        // 检查是否来自预测活动
+        boolean isFromPrediction = getIntent().getBooleanExtra("USE_PREDICTION", false);
+        if (isFromPrediction) {
+            // 自动开始相位优化
+            Toast.makeText(this, "正在使用预测数据进行相位优化...", Toast.LENGTH_SHORT).show();
+            optimizePhases();
+        }
     }
     
     private void initializeViews() 
@@ -427,6 +436,59 @@ public class PhaseBalanceActivity extends AppCompatActivity
         List<User> users = new ArrayList<>();
         try 
         {
+            // 检查是否使用预测数据
+            boolean usePredict = getIntent().getBooleanExtra("USE_PREDICTION", false);
+            
+            // 如果使用预测数据并且传递了预测结果列表
+            if (usePredict && getIntent().hasExtra("PREDICTION_DATA")) {
+                ArrayList<PredictionResult> predictions = (ArrayList<PredictionResult>) getIntent().getSerializableExtra("PREDICTION_DATA");
+                if (predictions != null && !predictions.isEmpty()) {
+                    // 将预测结果转换为User对象
+                    for (PredictionResult result : predictions) {
+                        // 计算总功率
+                        double predictedPhaseA = result.getPredictedPhaseAPower();
+                        double predictedPhaseB = result.getPredictedPhaseBPower();
+                        double predictedPhaseC = result.getPredictedPhaseCPower();
+                        double totalPower = predictedPhaseA + predictedPhaseB + predictedPhaseC;
+                        
+                        if (totalPower > 0) {
+                            // 确定当前相位
+                            byte currentPhase = 0;
+                            if (predictedPhaseA > 0) currentPhase = 1;
+                            else if (predictedPhaseB > 0) currentPhase = 2;
+                            else if (predictedPhaseC > 0) currentPhase = 3;
+                            
+                            // 判断是否为动力相
+                            boolean isPowerPhase = predictedPhaseA > 0 && 
+                                                  predictedPhaseB > 0 && 
+                                                  predictedPhaseC > 0;
+                            
+                            User user = new User(
+                                result.getUserId(),
+                                result.getUserName(),
+                                result.getRouteNumber(),
+                                result.getRouteName(),
+                                totalPower,
+                                predictedPhaseA,
+                                predictedPhaseB,
+                                predictedPhaseC,
+                                currentPhase,
+                                isPowerPhase
+                            );
+                            users.add(user);
+                            
+                            Log.d("PhaseBalanceActivity", String.format(
+                                "添加预测用户 - ID: %s, 名称: %s, 功率: %.2f, 相位: %d, 是否动力相: %b",
+                                result.getUserId(), result.getUserName(), totalPower, currentPhase, isPowerPhase
+                            ));
+                        }
+                    }
+                    
+                    Log.d("PhaseBalanceActivity", "从预测数据中添加了 " + users.size() + " 个用户");
+                    return users;
+                }
+            }
+            
             // 获取所有用户ID
             List<String> userIds = dbHelper.getAllUserIds();
             
