@@ -102,14 +102,16 @@ public class UserDataActivity extends AppCompatActivity
     // 初始化视图组件
     private void initViews()
     {
-        // 日期输入框
+        // 初始化视图
         etDate = findViewById(R.id.etDate);
-        // 总电量显示
         tvTotalPower = findViewById(R.id.tvTotalPower);
-        // 用户列表
         recyclerView = findViewById(R.id.recyclerView);
+        
+        // 设置布局管理器
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        adapter = new UserDataAdapter();
+        
+        // 初始化适配器
+        adapter = new UserDataAdapter(this);
         recyclerView.setAdapter(adapter);
     }
 
@@ -204,6 +206,9 @@ public class UserDataActivity extends AppCompatActivity
         {
             currentDate = date;
             etDate.setText(date);
+            
+            // 设置适配器的当前日期
+            adapter.setCurrentDate(date);
             
             // 获取并显示总电量和用户数据
             double[] totalPower = dbHelper.getTotalPowerByDate(date);
