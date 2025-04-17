@@ -181,7 +181,7 @@ public class MainActivity extends AppCompatActivity
         // 配置图表
         lineChart.getDescription().setEnabled(false);
         lineChart.setTouchEnabled(true);
-        lineChart.setDragEnabled(false);   // 禁止拖动
+        lineChart.setDragEnabled(true);   // 启用拖动
         lineChart.setScaleEnabled(false);  // 禁止缩放
         lineChart.setPinchZoom(false);     // 禁止双指缩放
         lineChart.setDrawGridBackground(false);
@@ -556,8 +556,8 @@ public class MainActivity extends AppCompatActivity
             List<Entry> entriesC = new ArrayList<>();
             List<String> dates = new ArrayList<>();
 
-            // 获取最近7天的数据
-            List<String> dbDates = dbHelper.getLastNDays(7);
+            // 获取最近30天的数据，增加可查看的日期范围
+            List<String> dbDates = dbHelper.getLastNDays(30);
             
             if (!dbDates.isEmpty())
             {
@@ -660,6 +660,15 @@ public class MainActivity extends AppCompatActivity
                 // 有数据时，让图表自动调整范围
                 lineChart.getAxisLeft().resetAxisMinimum();
                 lineChart.getAxisLeft().resetAxisMaximum();
+            }
+            
+            // 设置最大可见范围为7天，但允许用户拖动查看更多
+            lineChart.setVisibleXRangeMaximum(7);
+            
+            // 初始显示最新的7天数据
+            if (dates.size() > 7)
+            {
+                lineChart.moveViewToX(dates.size() - 7);
             }
 
             // 刷新图表
