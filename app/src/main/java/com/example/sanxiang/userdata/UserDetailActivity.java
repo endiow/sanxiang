@@ -7,6 +7,7 @@ import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
+import android.util.Log;
 
 import com.example.sanxiang.R;
 import com.example.sanxiang.userdata.model.UserData;
@@ -32,6 +33,7 @@ import java.util.Map;
 
 public class UserDetailActivity extends AppCompatActivity
 {
+    private static final String TAG = "UserDetailActivity";
     private DatabaseHelper dbHelper;    // 数据库操作类
     private LineChart lineChart;       // 图表
     private TextView tvUserInfo;       // 用户信息
@@ -557,13 +559,39 @@ public class UserDetailActivity extends AppCompatActivity
                 // 获取旧相位和新相位
                 String oldPhase = (String) adjustment.get("oldPhase");
                 String newPhase = (String) adjustment.get("newPhase");
+                Double oldPhaseAPower = (Double) adjustment.get("phaseAPower");
+                Double oldPhaseBPower = (Double) adjustment.get("phaseBPower");
+                Double oldPhaseCPower = (Double) adjustment.get("phaseCPower");
+
+                Double newPhaseAPower = (Double) data.getPhaseAPower();
+                Double newPhaseBPower = (Double) data.getPhaseBPower();
+                Double newPhaseCPower = (Double) data.getPhaseCPower();
+                
+                Log.d(TAG, "相位调整数据比较 - 日期: " + data.getDate());
+                Log.d(TAG, "旧相位: " + oldPhase + ", 新相位: " + newPhase);
+                Log.d(TAG, String.format("旧数据 - A相: %.2f, B相: %.2f, C相: %.2f", 
+                                        oldPhaseAPower, oldPhaseBPower, oldPhaseCPower));
+                Log.d(TAG, String.format("新数据 - A相: %.2f, B相: %.2f, C相: %.2f", 
+                                        newPhaseAPower, newPhaseBPower, newPhaseCPower));
                 
                 if (oldPhase != null && newPhase != null)
                 {
                     // 判断调整步数
-                    boolean isOneStep = ((oldPhase.equals("A") && newPhase.equals("B")) ||
-                                        (oldPhase.equals("B") && newPhase.equals("C")) ||
-                                        (oldPhase.equals("C") && newPhase.equals("A")));
+                    boolean isOneStep = false;
+                    // 检查电量值是否按顺时针方向旋转（A->B, B->C, C->A）
+                    boolean conditionA = Math.abs(oldPhaseAPower - newPhaseBPower) < 0.01;
+                    boolean conditionB = Math.abs(oldPhaseBPower - newPhaseCPower) < 0.01;
+                    boolean conditionC = Math.abs(oldPhaseCPower - newPhaseAPower) < 0.01;
+                    
+                    Log.d(TAG, String.format("条件检查 - A->B: %b, B->C: %b, C->A: %b", 
+                                            conditionA, conditionB, conditionC));
+                    
+                    if(conditionA && conditionB && conditionC)
+                    {
+                        isOneStep = true;
+                    }
+                    
+                    Log.d(TAG, "调整结果 - isOneStep: " + isOneStep);
                     
                     // 一步调整（顺时针）：颜色循环变化
                     if (isOneStep)
@@ -574,9 +602,9 @@ public class UserDetailActivity extends AppCompatActivity
                         int tempColorC = currentColorC;
                         
                         // 颜色顺时针旋转：红->绿->蓝->红
-                        currentColorA = tempColorC;  // A相的颜色变为原来C相的颜色
-                        currentColorB = tempColorA;  // B相的颜色变为原来A相的颜色
-                        currentColorC = tempColorB;  // C相的颜色变为原来B相的颜色
+                        currentColorA = tempColorB;  // A相的颜色变为原来B相的颜色
+                        currentColorB = tempColorC;  // B相的颜色变为原来C相的颜色
+                        currentColorC = tempColorA;  // C相的颜色变为原来A相的颜色
                     }
                     // 两步调整（逆时针）：颜色逆时针变化
                     else
@@ -587,9 +615,9 @@ public class UserDetailActivity extends AppCompatActivity
                         int tempColorC = currentColorC;
                         
                         // 颜色逆时针旋转：红->蓝->绿->红
-                        currentColorA = tempColorB;  // A相的颜色变为原来B相的颜色
-                        currentColorB = tempColorC;  // B相的颜色变为原来C相的颜色
-                        currentColorC = tempColorA;  // C相的颜色变为原来A相的颜色
+                        currentColorA = tempColorC;  // A相的颜色变为原来C相的颜色
+                        currentColorB = tempColorA;  // B相的颜色变为原来A相的颜色
+                        currentColorC = tempColorB;  // C相的颜色变为原来B相的颜色
                     }
                 }
             }
