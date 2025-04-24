@@ -25,6 +25,7 @@ import com.example.sanxiang.userdata.adapter.UserDataAdapter;
 import com.example.sanxiang.db.DatabaseHelper;
 import com.example.sanxiang.util.UnbalanceCalculator;
 import com.example.sanxiang.util.DateValidator;
+import com.example.sanxiang.util.PowerLossCalculator;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import java.util.ArrayList;
@@ -268,22 +269,37 @@ public class UserDataActivity extends AppCompatActivity
 
             double unbalanceRate = totalPower[3];
             String status = UnbalanceCalculator.getUnbalanceStatus(unbalanceRate);
-
+            
+            // 计算损耗信息
+            double phaseA = totalPower[0];
+            double phaseB = totalPower[1];
+            double phaseC = totalPower[2];
+            double unbalanceLoss = PowerLossCalculator.calculateUnbalanceLoss(phaseA, phaseB, phaseC);
+            double basicLossRate = 2.5 + ((phaseA + phaseB + phaseC) / 10000.0);
+            double totalLossRate = basicLossRate + unbalanceLoss;
+            
             // 格式化显示文本
             String powerInfo = String.format(
-                "三相总电量：\nA相：%.2f\nB相：%.2f\nC相：%.2f\n三相不平衡度：%.2f%% (%s)",
-                totalPower[0], totalPower[1], totalPower[2], unbalanceRate, status
+                "三相总电量：\nA相：%.2f\nB相：%.2f\nC相：%.2f\n三相不平衡度：%.2f%% (%s)\n\n" +
+                "电力损耗：\n" +
+                "基本损耗率：%.2f%%\n" +
+                "不平衡损耗率：%.2f%%\n" +
+                "总损耗率：%.2f%%",
+                phaseA, phaseB, phaseC, unbalanceRate, status,
+                basicLossRate, unbalanceLoss, totalLossRate
             );
             
             // 设置不平衡度可点击
             SpannableString spannableString = new SpannableString(powerInfo);
-            int start = powerInfo.indexOf("三相不平衡度");
-            if (start >= 0)
+            
+            // 不平衡度点击事件
+            int unbalanceStart = powerInfo.indexOf("三相不平衡度");
+            if (unbalanceStart >= 0)
             {
-                int end = start + 6;
+                int unbalanceEnd = unbalanceStart + 6;
                 
                 // 设置不平衡度点击显示计算过程
-                ClickableSpan clickableSpan = new ClickableSpan()
+                ClickableSpan unbalanceClickableSpan = new ClickableSpan()
                 {
                     @Override
                     public void onClick(@NonNull View view)
@@ -292,7 +308,7 @@ public class UserDataActivity extends AppCompatActivity
                         {
                             UnbalanceCalculator.showCalculationProcess(
                                 UserDataActivity.this,
-                                totalPower[0], totalPower[1], totalPower[2]
+                                phaseA, phaseB, phaseC
                             );
                         }
                         catch (Exception e)
@@ -310,14 +326,48 @@ public class UserDataActivity extends AppCompatActivity
                     }
                 };
                 
-                spannableString.setSpan(clickableSpan, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-                tvTotalPower.setText(spannableString);
-                tvTotalPower.setMovementMethod(LinkMovementMethod.getInstance());
+                spannableString.setSpan(unbalanceClickableSpan, unbalanceStart, unbalanceEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
-            else
+            
+            // 电力损耗点击事件
+            int lossStart = powerInfo.indexOf("电力损耗");
+            if (lossStart >= 0)
             {
-                tvTotalPower.setText(powerInfo);
+                int lossEnd = lossStart + 4;
+                
+                // 设置损耗点击显示详细计算
+                ClickableSpan lossClickableSpan = new ClickableSpan()
+                {
+                    @Override
+                    public void onClick(@NonNull View view)
+                    {
+                        try
+                        {
+                            PowerLossCalculator.showLossCalculationDetails(
+                                UserDataActivity.this,
+                                phaseA, phaseB, phaseC
+                            );
+                        }
+                        catch (Exception e)
+                        {
+                            e.printStackTrace();
+                        }
+                    }
+
+                    @Override
+                    public void updateDrawState(@NonNull TextPaint ds)
+                    {
+                        ds.setColor(Color.rgb(51, 102, 153));
+                        ds.setUnderlineText(false);
+                        ds.setFakeBoldText(true);
+                    }
+                };
+                
+                spannableString.setSpan(lossClickableSpan, lossStart, lossEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
+            
+            tvTotalPower.setText(spannableString);
+            tvTotalPower.setMovementMethod(LinkMovementMethod.getInstance());
         }
         catch (Exception e)
         {
