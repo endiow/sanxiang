@@ -9,8 +9,6 @@ import androidx.appcompat.app.AlertDialog;
  */
 public class PowerLossCalculator 
 {
-    // 系统额定电压（伏特）
-    private static final double RATED_VOLTAGE = 380.0;
     // 假设的平均负载持续时间（小时）- 用于将电能换算为平均功率
     private static final double AVG_LOAD_HOURS = 24.0;
     
@@ -29,7 +27,7 @@ public class PowerLossCalculator
      * @param phaseAEnergy A相用电量（kWh）
      * @param phaseBEnergy B相用电量（kWh）
      * @param phaseCEnergy C相用电量（kWh）
-     * @return 线路损耗系数（kWh/Ω）
+     * @return 线路损耗系数（P²/U² * 时间）
      */
     public static double calculateLineLossCoefficient(double phaseAEnergy, double phaseBEnergy, double phaseCEnergy) 
     {
@@ -38,16 +36,12 @@ public class PowerLossCalculator
         double powerB = convertEnergyToPower(phaseBEnergy);
         double powerC = convertEnergyToPower(phaseCEnergy);
         
-        // 假设电压为额定电压，计算每相电流
-        double currentA = powerA / RATED_VOLTAGE;
-        double currentB = powerB / RATED_VOLTAGE;
-        double currentC = powerC / RATED_VOLTAGE;
+        // 计算P²/U²项（使用符号U表示电压）
+        double powerSquaredSum = Math.pow(powerA, 2) + Math.pow(powerB, 2) + Math.pow(powerC, 2);
         
-        // 计算不包含电阻R的功率损耗系数 (I²)
-        double powerLossCoefficient = (Math.pow(currentA, 2) + Math.pow(currentB, 2) + Math.pow(currentC, 2));
-        
+        // 功率损耗系数为P²/U²
         // 将功率损耗系数转换为电能损耗系数
-        return powerLossCoefficient * AVG_LOAD_HOURS;
+        return powerSquaredSum * AVG_LOAD_HOURS;
     }
     
     /**
@@ -66,16 +60,11 @@ public class PowerLossCalculator
         double powerB = convertEnergyToPower(phaseBEnergy);
         double powerC = convertEnergyToPower(phaseCEnergy);
         
-        // 计算电流
-        double currentA = powerA / RATED_VOLTAGE;
-        double currentB = powerB / RATED_VOLTAGE;
-        double currentC = powerC / RATED_VOLTAGE;
-        
-        // 计算电流平方和
-        double currentSquaredSum = Math.pow(currentA, 2) + Math.pow(currentB, 2) + Math.pow(currentC, 2);
+        // 计算功率平方和
+        double powerSquaredSum = Math.pow(powerA, 2) + Math.pow(powerB, 2) + Math.pow(powerC, 2);
         
         // 计算最终损耗系数
-        double lossCoefficient = currentSquaredSum * AVG_LOAD_HOURS;
+        double lossCoefficient = powerSquaredSum * AVG_LOAD_HOURS;
         
         // 格式化消息
         String message = String.format(
@@ -92,23 +81,18 @@ public class PowerLossCalculator
             "   PB = %.2f kWh ÷ 24h = %.4f kW\n" +
             "   PC = %.2f kWh ÷ 24h = %.4f kW\n\n" +
             
-            "2. 计算每相电流（I = P ÷ U，额定电压U = %.1f V）：\n" +
-            "   IA = %.4f kW ÷ %.1f V = %.6f kA\n" +
-            "   IB = %.4f kW ÷ %.1f V = %.6f kA\n" +
-            "   IC = %.4f kW ÷ %.1f V = %.6f kA\n\n" +
+            "2. 计算功率平方和：\n" +
+            "   P² = (%.4f)² + (%.4f)² + (%.4f)²\n" +
+            "   P² = %.8f + %.8f + %.8f\n" +
+            "   P² = %.8f kW²\n\n" +
             
-            "3. 计算电流平方和（I²A + I²B + I²C）：\n" +
-            "   I² = (%.6f)² + (%.6f)² + (%.6f)²\n" +
-            "   I² = %.8f + %.8f + %.8f\n" +
-            "   I² = %.8f kA²\n\n" +
-            
-            "4. 计算损耗系数（I² × 时间）：\n" +
-            "   损耗系数 = %.8f kA² × 24h = %.8f kA²·h\n\n" +
+            "3. 计算损耗系数（P² × 时间）：\n" +
+            "   损耗系数 = %.8f kW² × 24h = %.8f kW²·h\n\n" +
             
             "三、结果：\n" +
-            "线路损耗 = %.8f × R kWh\n\n" +
+            "线路损耗 = %.8f × R/U² kWh\n\n" +
             
-            "说明：R表示线路电阻（Ω），最终损耗值需将此结果乘以实际线路电阻。",
+            "说明：R表示线路电阻（Ω），U表示系统额定电压（V），\n最终损耗值需将此结果乘以R/U²。",
             
             // 输入数据
             phaseAEnergy, phaseBEnergy, phaseCEnergy, totalEnergy,
@@ -118,19 +102,13 @@ public class PowerLossCalculator
             phaseBEnergy, powerB,
             phaseCEnergy, powerC,
             
-            // 计算过程 - 电流
-            RATED_VOLTAGE,
-            powerA, RATED_VOLTAGE, currentA,
-            powerB, RATED_VOLTAGE, currentB,
-            powerC, RATED_VOLTAGE, currentC,
-            
-            // 计算过程 - 电流平方
-            currentA, currentB, currentC,
-            Math.pow(currentA, 2), Math.pow(currentB, 2), Math.pow(currentC, 2),
-            currentSquaredSum,
+            // 计算过程 - 功率平方
+            powerA, powerB, powerC,
+            Math.pow(powerA, 2), Math.pow(powerB, 2), Math.pow(powerC, 2),
+            powerSquaredSum,
             
             // 结果
-            currentSquaredSum, lossCoefficient,
+            powerSquaredSum, lossCoefficient,
             lossCoefficient
         );
         

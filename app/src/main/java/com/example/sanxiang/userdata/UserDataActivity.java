@@ -305,7 +305,7 @@ public class UserDataActivity extends AppCompatActivity
                 // 显示基本信息和加载提示
                 final String initialInfo = String.format(
                     "三相总电量：\nA相：%.2f\nB相：%.2f\nC相：%.2f\n三相不平衡度：%.2f%% (%s)\n" +
-                    "线路损耗：%.5f × R kWh\n" +
+                    "线路损耗：%.5f × R/U² kWh\n" +
                     "线路损耗优化比：0.00%%",
                     phaseA, phaseB, phaseC, unbalanceRate, status,
                     lossCoefficient
@@ -405,7 +405,7 @@ public class UserDataActivity extends AppCompatActivity
                             // 更新UI显示
                             String updatedInfo = String.format(
                                 "三相总电量：\nA相：%.2f\nB相：%.2f\nC相：%.2f\n三相不平衡度：%.2f%% (%s)\n" +
-                                "线路损耗：%.5f × R kWh\n" +
+                                "线路损耗：%.5f × R/U² kWh\n" +
                                 "线路损耗优化比：%.2f%%",
                                 phaseA, phaseB, phaseC, unbalanceRate, status,
                                 lossCoefficient,
@@ -434,7 +434,7 @@ public class UserDataActivity extends AppCompatActivity
                 // 格式化显示文本 - 无相位调整
                 powerInfo = String.format(
                     "三相总电量：\nA相：%.2f\nB相：%.2f\nC相：%.2f\n三相不平衡度：%.2f%% (%s)\n" +
-                    "线路损耗：%.5f × R kWh",
+                    "线路损耗：%.5f × R/U² kWh",
                     phaseA, phaseB, phaseC, unbalanceRate, status,
                     lossCoefficient
                 );
@@ -644,13 +644,13 @@ public class UserDataActivity extends AppCompatActivity
                 "B相：%.2f kWh\n" +
                 "C相：%.2f kWh\n" +
                 "不平衡度：%.2f%% (%s)\n\n" +
-                "调整前损耗：%.5f × R kWh\n\n" +
+                "调整前损耗：%.5f × R/U² kWh\n\n" +
                 "调整后三相电量：\n" +
                 "A相：%.2f kWh\n" +
                 "B相：%.2f kWh\n" +
                 "C相：%.2f kWh\n" +
                 "不平衡度：%.2f%% (%s)\n\n" +
-                "调整后损耗：%.5f × R kWh\n\n" +
+                "调整后损耗：%.5f × R/U² kWh\n\n" +
                 "优化比例：%.2f%%",
                 beforePhaseA, beforePhaseB, beforePhaseC, beforeUnbalanceRate, beforeStatus,
                 beforeLossCoefficient,
