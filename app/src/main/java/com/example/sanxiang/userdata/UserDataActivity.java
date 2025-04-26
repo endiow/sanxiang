@@ -30,6 +30,8 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 // 用户数据显示界面
 public class UserDataActivity extends AppCompatActivity
@@ -40,6 +42,9 @@ public class UserDataActivity extends AppCompatActivity
     private RecyclerView recyclerView;   // 用户列表
     private UserDataAdapter adapter;     // 列表适配器
     private String currentDate;          // 当前显示的日期
+    private Map<String, UserData> userDataCache = new HashMap<>();
+    private Map<String, Double> beforePhaseCache = null;
+    private boolean isCalculating = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState)
@@ -208,12 +213,25 @@ public class UserDataActivity extends AppCompatActivity
             currentDate = date;
             etDate.setText(date);
             
+            // 清空缓存
+            userDataCache.clear();
+            beforePhaseCache = null;
+            
             // 设置适配器的当前日期
             adapter.setCurrentDate(date);
             
             // 获取并显示总电量和用户数据
             double[] totalPower = dbHelper.getTotalPowerByDate(date);
             List<UserData> userDataList = dbHelper.getUserDataByDate(date);
+            
+            // 缓存用户数据，加速后续查询
+            if (userDataList != null)
+            {
+                for (UserData userData : userDataList)
+                {
+                    userDataCache.put(userData.getUserId(), userData);
+                }
+            }
             
             if (totalPower != null && totalPower.length >= 4)
             {
@@ -274,100 +292,156 @@ public class UserDataActivity extends AppCompatActivity
             double phaseA = totalPower[0];
             double phaseB = totalPower[1];
             double phaseC = totalPower[2];
-            double unbalanceLoss = PowerLossCalculator.calculateUnbalanceLoss(phaseA, phaseB, phaseC);
-            double basicLossRate = 2.5 + ((phaseA + phaseB + phaseC) / 10000.0);
-            double totalLossRate = basicLossRate + unbalanceLoss;
             
-            // 格式化显示文本
-            String powerInfo = String.format(
-                "三相总电量：\nA相：%.2f\nB相：%.2f\nC相：%.2f\n三相不平衡度：%.2f%% (%s)\n\n" +
-                "电力损耗：\n" +
-                "基本损耗率：%.2f%%\n" +
-                "不平衡损耗率：%.2f%%\n" +
-                "总损耗率：%.2f%%",
-                phaseA, phaseB, phaseC, unbalanceRate, status,
-                basicLossRate, unbalanceLoss, totalLossRate
-            );
+            // 计算线路损耗系数
+            double lossCoefficient = PowerLossCalculator.calculateLineLossCoefficient(phaseA, phaseB, phaseC);
             
-            // 设置不平衡度可点击
-            SpannableString spannableString = new SpannableString(powerInfo);
+            // 检查是否有相位调整
+            final boolean hasAdjustment = dbHelper.hasPhaseAdjustmentOnDate(currentDate);
+            String powerInfo;
             
-            // 不平衡度点击事件
-            int unbalanceStart = powerInfo.indexOf("三相不平衡度");
-            if (unbalanceStart >= 0)
+            if (hasAdjustment && !isCalculating) 
             {
-                int unbalanceEnd = unbalanceStart + 6;
+                // 显示基本信息和加载提示
+                final String initialInfo = String.format(
+                    "三相总电量：\nA相：%.2f\nB相：%.2f\nC相：%.2f\n三相不平衡度：%.2f%% (%s)\n" +
+                    "线路损耗：%.5f × R kWh\n" +
+                    "线路损耗优化比：0.00%%",
+                    phaseA, phaseB, phaseC, unbalanceRate, status,
+                    lossCoefficient
+                );
+                tvTotalPower.setText(initialInfo);
                 
-                // 设置不平衡度点击显示计算过程
-                ClickableSpan unbalanceClickableSpan = new ClickableSpan()
-                {
-                    @Override
-                    public void onClick(@NonNull View view)
-                    {
-                        try
-                        {
-                            UnbalanceCalculator.showCalculationProcess(
-                                UserDataActivity.this,
-                                phaseA, phaseB, phaseC
+                // 标记正在计算
+                isCalculating = true;
+                
+                // 异步计算
+                new Thread(() -> {
+                    try {
+                        // 如果没有缓存过，进行计算
+                        if (beforePhaseCache == null) {
+                            // 计算调整前的三相电量 - 从当前电量开始，逆向推算
+                            double beforePhaseA = phaseA;
+                            double beforePhaseB = phaseB;
+                            double beforePhaseC = phaseC;
+                            
+                            // 从old_data表获取调整前的三相总量数据
+                            List<String> adjustedUsers = dbHelper.getUsersWithPhaseAdjustmentOnDate(currentDate);
+                            
+                            // 根据调整前后的相位变化反向计算原始电量
+                            for (String userId : adjustedUsers) 
+                            {
+                                Map<String, Object> adjustment = dbHelper.getUserPhaseAdjustment(userId, currentDate);
+                                if (adjustment != null) 
+                                {
+                                    String oldPhase = (String) adjustment.get("oldPhase");
+                                    String newPhase = (String) adjustment.get("newPhase");
+                                    
+                                    // 获取用户当前的电量
+                                    UserData userData = getUserDataById(userId);
+                                    if (userData != null)
+                                    {
+                                        double userPower = 0;
+                                        
+                                        // 计算该用户的总用电量
+                                        userPower = userData.getPhaseAPower() + userData.getPhaseBPower() + userData.getPhaseCPower();
+                                        
+                                        // 从现在的相位减去电量
+                                        switch (newPhase)
+                                        {
+                                            case "A":
+                                                beforePhaseA -= userPower;
+                                                break;
+                                            case "B":
+                                                beforePhaseB -= userPower;
+                                                break;
+                                            case "C":
+                                                beforePhaseC -= userPower;
+                                                break;
+                                        }
+                                        
+                                        // 给原来的相位加上电量
+                                        switch (oldPhase)
+                                        {
+                                            case "A":
+                                                beforePhaseA += userPower;
+                                                break;
+                                            case "B":
+                                                beforePhaseB += userPower;
+                                                break;
+                                            case "C":
+                                                beforePhaseC += userPower;
+                                                break;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // 保存到缓存
+                            beforePhaseCache = new HashMap<>();
+                            beforePhaseCache.put("A", beforePhaseA);
+                            beforePhaseCache.put("B", beforePhaseB);
+                            beforePhaseCache.put("C", beforePhaseC);
+                        }
+                        
+                        // 从缓存读取
+                        final double beforePhaseA = beforePhaseCache.get("A");
+                        final double beforePhaseB = beforePhaseCache.get("B");
+                        final double beforePhaseC = beforePhaseCache.get("C");
+                        
+                        // 计算调整前的假设线路损耗
+                        final double beforeLossCoefficient = PowerLossCalculator.calculateLineLossCoefficient(
+                            beforePhaseA, beforePhaseB, beforePhaseC);
+                        
+                        // 计算优化比例
+                        double optimizationRatio = 0;
+                        if (beforeLossCoefficient > 0) {
+                            optimizationRatio = (beforeLossCoefficient - lossCoefficient) / beforeLossCoefficient * 100;
+                        }
+                        
+                        // 格式化最终显示文本
+                        final double finalOptimizationRatio = optimizationRatio;
+                        runOnUiThread(() -> {
+                            // 更新UI显示
+                            String updatedInfo = String.format(
+                                "三相总电量：\nA相：%.2f\nB相：%.2f\nC相：%.2f\n三相不平衡度：%.2f%% (%s)\n" +
+                                "线路损耗：%.5f × R kWh\n" +
+                                "线路损耗优化比：%.2f%%",
+                                phaseA, phaseB, phaseC, unbalanceRate, status,
+                                lossCoefficient,
+                                finalOptimizationRatio
                             );
-                        }
-                        catch (Exception e)
-                        {
-                            e.printStackTrace();
-                        }
+                            
+                            // 设置可点击的文本
+                            updateClickableSpans(updatedInfo, phaseA, phaseB, phaseC, beforePhaseA, beforePhaseB, beforePhaseC);
+                            
+                            // 标记计算完成
+                            isCalculating = false;
+                        });
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        runOnUiThread(() -> {
+                            Toast.makeText(UserDataActivity.this, "计算优化比例时出错: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            isCalculating = false;
+                        });
                     }
-
-                    @Override
-                    public void updateDrawState(@NonNull TextPaint ds)
-                    {
-                        ds.setColor(Color.rgb(51, 102, 153));
-                        ds.setUnderlineText(false);
-                        ds.setFakeBoldText(true);
-                    }
-                };
+                }).start();
                 
-                spannableString.setSpan(unbalanceClickableSpan, unbalanceStart, unbalanceEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-            }
-            
-            // 电力损耗点击事件
-            int lossStart = powerInfo.indexOf("电力损耗");
-            if (lossStart >= 0)
+                return;
+            } 
+            else if (!hasAdjustment)
             {
-                int lossEnd = lossStart + 4;
+                // 格式化显示文本 - 无相位调整
+                powerInfo = String.format(
+                    "三相总电量：\nA相：%.2f\nB相：%.2f\nC相：%.2f\n三相不平衡度：%.2f%% (%s)\n" +
+                    "线路损耗：%.5f × R kWh",
+                    phaseA, phaseB, phaseC, unbalanceRate, status,
+                    lossCoefficient
+                );
                 
-                // 设置损耗点击显示详细计算
-                ClickableSpan lossClickableSpan = new ClickableSpan()
-                {
-                    @Override
-                    public void onClick(@NonNull View view)
-                    {
-                        try
-                        {
-                            PowerLossCalculator.showLossCalculationDetails(
-                                UserDataActivity.this,
-                                phaseA, phaseB, phaseC
-                            );
-                        }
-                        catch (Exception e)
-                        {
-                            e.printStackTrace();
-                        }
-                    }
-
-                    @Override
-                    public void updateDrawState(@NonNull TextPaint ds)
-                    {
-                        ds.setColor(Color.rgb(51, 102, 153));
-                        ds.setUnderlineText(false);
-                        ds.setFakeBoldText(true);
-                    }
-                };
-                
-                spannableString.setSpan(lossClickableSpan, lossStart, lossEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                // 设置不平衡度可点击
+                updateClickableSpans(powerInfo, phaseA, phaseB, phaseC, 0, 0, 0);
             }
-            
-            tvTotalPower.setText(spannableString);
-            tvTotalPower.setMovementMethod(LinkMovementMethod.getInstance());
         }
         catch (Exception e)
         {
@@ -376,6 +450,226 @@ public class UserDataActivity extends AppCompatActivity
             {
                 tvTotalPower.setText("暂无数据");
             }
+        }
+    }
+    
+    // 更新可点击文本
+    private void updateClickableSpans(String powerInfo, double phaseA, double phaseB, double phaseC, 
+                                     double beforePhaseA, double beforePhaseB, double beforePhaseC) 
+    {
+        SpannableString spannableString = new SpannableString(powerInfo);
+        
+        // 不平衡度点击事件
+        int unbalanceStart = powerInfo.indexOf("三相不平衡度");
+        if (unbalanceStart >= 0)
+        {
+            int unbalanceEnd = unbalanceStart + 6;
+            
+            // 设置不平衡度点击显示计算过程
+            ClickableSpan unbalanceClickableSpan = new ClickableSpan()
+            {
+                @Override
+                public void onClick(@NonNull View view)
+                {
+                    try
+                    {
+                        UnbalanceCalculator.showCalculationProcess(
+                            UserDataActivity.this,
+                            phaseA, phaseB, phaseC
+                        );
+                    }
+                    catch (Exception e)
+                    {
+                        e.printStackTrace();
+                    }
+                }
+
+                @Override
+                public void updateDrawState(@NonNull TextPaint ds)
+                {
+                    ds.setColor(Color.rgb(51, 102, 153));
+                    ds.setUnderlineText(false);
+                    ds.setFakeBoldText(true);
+                }
+            };
+            
+            spannableString.setSpan(unbalanceClickableSpan, unbalanceStart, unbalanceEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        
+        // 线路损耗点击事件 - 无论是否有相位调整均可点击
+        int lossStart = powerInfo.indexOf("线路损耗");
+        if (lossStart >= 0)
+        {
+            // 对第一个"线路损耗"设置点击事件
+            int lossEnd = lossStart + 4;
+            
+            // 设置损耗点击显示详细计算
+            ClickableSpan lossClickableSpan = new ClickableSpan()
+            {
+                @Override
+                public void onClick(@NonNull View view)
+                {
+                    try
+                    {
+                        PowerLossCalculator.showLossCalculationDetails(
+                            UserDataActivity.this,
+                            phaseA, phaseB, phaseC
+                        );
+                    }
+                    catch (Exception e)
+                    {
+                        e.printStackTrace();
+                    }
+                }
+
+                @Override
+                public void updateDrawState(@NonNull TextPaint ds)
+                {
+                    ds.setColor(Color.rgb(51, 102, 153));
+                    ds.setUnderlineText(false);
+                    ds.setFakeBoldText(true);
+                }
+            };
+            
+            spannableString.setSpan(lossClickableSpan, lossStart, lossEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        
+        // 如果有优化比，添加点击事件
+        int optimizationStart = powerInfo.indexOf("线路损耗优化比");
+        if (optimizationStart >= 0 && !powerInfo.contains("0.00%"))
+        {
+            int optimizationEnd = optimizationStart + 7;
+            
+            // 设置优化比点击事件
+            ClickableSpan optimizationClickableSpan = new ClickableSpan()
+            {
+                @Override
+                public void onClick(@NonNull View view)
+                {
+                    try
+                    {
+                        // 显示优化详情对话框 - 使用缓存的数据
+                        if (beforePhaseCache != null) {
+                            showOptimizationDetails(phaseA, phaseB, phaseC);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        e.printStackTrace();
+                    }
+                }
+
+                @Override
+                public void updateDrawState(@NonNull TextPaint ds)
+                {
+                    ds.setColor(Color.rgb(51, 102, 153));
+                    ds.setUnderlineText(false);
+                    ds.setFakeBoldText(true);
+                }
+            };
+            
+            spannableString.setSpan(optimizationClickableSpan, optimizationStart, optimizationEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        
+        tvTotalPower.setText(spannableString);
+        tvTotalPower.setMovementMethod(LinkMovementMethod.getInstance());
+    }
+    
+    // 根据用户ID获取当前数据
+    private UserData getUserDataById(String userId)
+    {
+        if (currentDate == null || userId == null) return null;
+        
+        // 从缓存中获取
+        if (userDataCache.containsKey(userId)) {
+            return userDataCache.get(userId);
+        }
+        
+        // 缓存未命中，从数据库查询
+        UserData userData = null;
+        List<UserData> userDataList = dbHelper.getUserDataByDate(currentDate);
+        for (UserData data : userDataList)
+        {
+            if (userId.equals(data.getUserId()))
+            {
+                userData = data;
+                break;
+            }
+        }
+        
+        // 更新缓存
+        if (userData != null) {
+            userDataCache.put(userId, userData);
+        }
+        
+        return userData;
+    }
+    
+    // 显示优化详情对话框
+    private void showOptimizationDetails(double phaseA, double phaseB, double phaseC)
+    {
+        try
+        {
+            // 使用缓存的调整前数据
+            double beforePhaseA = beforePhaseCache.get("A");
+            double beforePhaseB = beforePhaseCache.get("B");
+            double beforePhaseC = beforePhaseCache.get("C");
+            
+            // 计算调整前的不平衡度
+            double beforeUnbalanceRate = UnbalanceCalculator.calculateUnbalanceRate(
+                beforePhaseA, beforePhaseB, beforePhaseC);
+            String beforeStatus = UnbalanceCalculator.getUnbalanceStatus(beforeUnbalanceRate);
+            
+            // 获取当前(调整后)的不平衡度
+            double afterUnbalanceRate = UnbalanceCalculator.calculateUnbalanceRate(phaseA, phaseB, phaseC);
+            String afterStatus = UnbalanceCalculator.getUnbalanceStatus(afterUnbalanceRate);
+            
+            // 计算调整前后的线路损耗
+            double afterLossCoefficient = PowerLossCalculator.calculateLineLossCoefficient(
+                phaseA, phaseB, phaseC);
+            double beforeLossCoefficient = PowerLossCalculator.calculateLineLossCoefficient(
+                beforePhaseA, beforePhaseB, beforePhaseC);
+            
+            // 计算优化比例
+            double optimizationRatio = 0;
+            if (beforeLossCoefficient > 0) {
+                optimizationRatio = (beforeLossCoefficient - afterLossCoefficient) / beforeLossCoefficient * 100;
+            }
+            
+            // 构建详情信息
+            String message = String.format(
+                "线路损耗优化详情：\n\n" +
+                "调整前三相电量：\n" +
+                "A相：%.2f kWh\n" +
+                "B相：%.2f kWh\n" +
+                "C相：%.2f kWh\n" +
+                "不平衡度：%.2f%% (%s)\n\n" +
+                "调整前损耗：%.5f × R kWh\n\n" +
+                "调整后三相电量：\n" +
+                "A相：%.2f kWh\n" +
+                "B相：%.2f kWh\n" +
+                "C相：%.2f kWh\n" +
+                "不平衡度：%.2f%% (%s)\n\n" +
+                "调整后损耗：%.5f × R kWh\n\n" +
+                "优化比例：%.2f%%",
+                beforePhaseA, beforePhaseB, beforePhaseC, beforeUnbalanceRate, beforeStatus,
+                beforeLossCoefficient,
+                phaseA, phaseB, phaseC, afterUnbalanceRate, afterStatus,
+                afterLossCoefficient,
+                optimizationRatio
+            );
+            
+            // 显示对话框
+            new android.app.AlertDialog.Builder(this)
+                .setTitle("线路损耗优化详情")
+                .setMessage(message)
+                .setPositiveButton("确定", null)
+                .show();
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+            Toast.makeText(this, "获取优化详情失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
