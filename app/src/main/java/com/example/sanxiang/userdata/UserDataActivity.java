@@ -8,6 +8,7 @@ import android.text.SpannableString;
 import android.text.TextPaint;
 import android.text.method.LinkMovementMethod;
 import android.text.style.ClickableSpan;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -325,8 +326,13 @@ public class UserDataActivity extends AppCompatActivity
                             double beforePhaseB = phaseB;
                             double beforePhaseC = phaseC;
                             
+                            Log.d("UserDataActivity", "开始计算调整前电量数据 - 当前日期: " + currentDate);
+                            Log.d("UserDataActivity", String.format("当前调整后电量 - A相: %.2f, B相: %.2f, C相: %.2f", 
+                                phaseA, phaseB, phaseC));
+                            
                             // 从old_data表获取调整前的三相总量数据
                             List<String> adjustedUsers = dbHelper.getUsersWithPhaseAdjustmentOnDate(currentDate);
+                            Log.d("UserDataActivity", "找到调整过相位的用户数量: " + adjustedUsers.size());
                             
                             // 根据调整前后的相位变化反向计算原始电量
                             for (String userId : adjustedUsers) 
@@ -346,36 +352,59 @@ public class UserDataActivity extends AppCompatActivity
                                         // 计算该用户的总用电量
                                         userPower = userData.getPhaseAPower() + userData.getPhaseBPower() + userData.getPhaseCPower();
                                         
+                                        Log.d("UserDataActivity", String.format(
+                                            "用户ID: %s, 旧相位: %s, 新相位: %s, 电量: %.2f",
+                                            userId, oldPhase, newPhase, userPower));
+                                        Log.d("UserDataActivity", String.format(
+                                            "用户三相电量 - A相: %.2f, B相: %.2f, C相: %.2f",
+                                            userData.getPhaseAPower(), userData.getPhaseBPower(), userData.getPhaseCPower()));
+                                        
                                         // 从现在的相位减去电量
-                                        switch (newPhase)
-                                        {
-                                            case "A":
-                                                beforePhaseA -= userPower;
-                                                break;
-                                            case "B":
-                                                beforePhaseB -= userPower;
-                                                break;
-                                            case "C":
-                                                beforePhaseC -= userPower;
-                                                break;
+                                        double beforeA = beforePhaseA;
+                                        double beforeB = beforePhaseB;
+                                        double beforeC = beforePhaseC;
+                                        
+                                        // 使用if-else结构代替switch
+                                        if ("A".equals(newPhase)) {
+                                            beforePhaseA -= userPower;
+                                        } else if ("B".equals(newPhase)) {
+                                            beforePhaseB -= userPower;
+                                        } else if ("C".equals(newPhase)) {
+                                            beforePhaseC -= userPower;
+                                        } else {
+                                            Log.e("UserDataActivity", "错误的新相位值: " + newPhase);
                                         }
                                         
                                         // 给原来的相位加上电量
-                                        switch (oldPhase)
-                                        {
-                                            case "A":
-                                                beforePhaseA += userPower;
-                                                break;
-                                            case "B":
-                                                beforePhaseB += userPower;
-                                                break;
-                                            case "C":
-                                                beforePhaseC += userPower;
-                                                break;
+                                        if ("A".equals(oldPhase)) {
+                                            beforePhaseA += userPower;
+                                        } else if ("B".equals(oldPhase)) {
+                                            beforePhaseB += userPower;
+                                        } else if ("C".equals(oldPhase)) {
+                                            beforePhaseC += userPower;
+                                        } else {
+                                            Log.e("UserDataActivity", "错误的旧相位值: " + oldPhase);
                                         }
+                                        
+                                        Log.d("UserDataActivity", String.format(
+                                            "计算中 - 用户: %s, 减去 %s相: %.2f, 加上 %s相: %.2f", 
+                                            userId, newPhase, userPower, oldPhase, userPower));
+                                        Log.d("UserDataActivity", String.format(
+                                            "修正后电量 - A相: %.2f (变化: %.2f), B相: %.2f (变化: %.2f), C相: %.2f (变化: %.2f)",
+                                            beforePhaseA, beforePhaseA - beforeA,
+                                            beforePhaseB, beforePhaseB - beforeB,
+                                            beforePhaseC, beforePhaseC - beforeC));
                                     }
                                 }
+                                else
+                                {
+                                    Log.d("UserDataActivity", "未找到用户" + userId + "的相位调整记录");
+                                }
                             }
+                            
+                            Log.d("UserDataActivity", String.format(
+                                "最终计算得到调整前电量 - A相: %.2f, B相: %.2f, C相: %.2f", 
+                                beforePhaseA, beforePhaseB, beforePhaseC));
                             
                             // 保存到缓存
                             beforePhaseCache = new HashMap<>();
@@ -615,6 +644,13 @@ public class UserDataActivity extends AppCompatActivity
             double beforePhaseB = beforePhaseCache.get("B");
             double beforePhaseC = beforePhaseCache.get("C");
             
+            // 输出详细日志信息用于调试
+            Log.d("UserDataActivity", "显示优化详情对话框");
+            Log.d("UserDataActivity", String.format("调整前数据 - A相: %.2f, B相: %.2f, C相: %.2f", 
+                beforePhaseA, beforePhaseB, beforePhaseC));
+            Log.d("UserDataActivity", String.format("调整后数据 - A相: %.2f, B相: %.2f, C相: %.2f", 
+                phaseA, phaseB, phaseC));
+            
             // 计算调整前的不平衡度
             double beforeUnbalanceRate = UnbalanceCalculator.calculateUnbalanceRate(
                 beforePhaseA, beforePhaseB, beforePhaseC);
@@ -630,11 +666,20 @@ public class UserDataActivity extends AppCompatActivity
             double beforeLossCoefficient = PowerLossCalculator.calculateLineLossCoefficient(
                 beforePhaseA, beforePhaseB, beforePhaseC);
             
+            Log.d("UserDataActivity", String.format("调整前不平衡度: %.2f%%, 状态: %s", 
+                beforeUnbalanceRate, beforeStatus));
+            Log.d("UserDataActivity", String.format("调整后不平衡度: %.2f%%, 状态: %s", 
+                afterUnbalanceRate, afterStatus));
+            Log.d("UserDataActivity", String.format("调整前损耗系数: %.5f, 调整后损耗系数: %.5f", 
+                beforeLossCoefficient, afterLossCoefficient));
+            
             // 计算优化比例
             double optimizationRatio = 0;
             if (beforeLossCoefficient > 0) {
                 optimizationRatio = (beforeLossCoefficient - afterLossCoefficient) / beforeLossCoefficient * 100;
             }
+            
+            Log.d("UserDataActivity", String.format("计算得到的优化比例: %.2f%%", optimizationRatio));
             
             // 构建详情信息
             String message = String.format(

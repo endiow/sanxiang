@@ -461,6 +461,8 @@ public class PhaseAdjustmentStrategyActivity extends AppCompatActivity
                         if (cursor.moveToFirst()) {
                             // 获取旧相位和电量数据
                             String oldPhase = cursor.getString(cursor.getColumnIndex("phase"));
+                            // 格式化相位名称，确保只有A/B/C，去掉可能存在的"相"字
+                            oldPhase = oldPhase.replace("相", "");
                             double oldPhaseA = cursor.getDouble(cursor.getColumnIndex("phase_a_power"));
                             double oldPhaseB = cursor.getDouble(cursor.getColumnIndex("phase_b_power"));
                             double oldPhaseC = cursor.getDouble(cursor.getColumnIndex("phase_c_power"));
