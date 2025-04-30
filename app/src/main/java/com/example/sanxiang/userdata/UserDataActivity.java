@@ -319,175 +319,19 @@ public class UserDataActivity extends AppCompatActivity
                 // 异步计算
                 new Thread(() -> {
                     try {
-                        // 如果没有缓存过，进行计算
+                        // 如果没有缓存过，从数据库获取调整前的三相电量和
                         if (beforePhaseCache == null) {
-                            // 计算调整前的三相电量 - 从当前电量开始，逆向推算
-                            double beforePhaseA = phaseA;
-                            double beforePhaseB = phaseB;
-                            double beforePhaseC = phaseC;
+                            // 从数据库中获取调整前的三相电量和，而不是计算
+                            double[] adjustmentTotalPowers = dbHelper.getAdjustmentTotalPowers(currentDate);
                             
-                            Log.d("UserDataActivity", "开始计算调整前电量数据 - 当前日期: " + currentDate);
-                            Log.d("UserDataActivity", String.format("当前调整后电量 - A相: %.2f, B相: %.2f, C相: %.2f", 
-                                phaseA, phaseB, phaseC));
-                            
-                            // 检查是否存在D相（动力相位）并进行相应处理
-                            boolean hasDPhase = false;
-                            int dPhaseSteps = 0;
-                            
-                            // 从old_data表获取调整前的三相总量数据
-                            List<String> adjustedUsers = dbHelper.getUsersWithPhaseAdjustmentOnDate(currentDate);
-                            Log.d("UserDataActivity", "找到调整过相位的用户数量: " + adjustedUsers.size());
-                            
-                            // 先检查是否有D相用户，并获取其旧电量与新电量作比较
-                            for (String userId : adjustedUsers) {
-                                Map<String, Object> adjustment = dbHelper.getUserPhaseAdjustment(userId, currentDate);
-                                UserData userData = getUserDataById(userId);
-                                
-                                if (adjustment != null && userData != null && "D".equals(userData.getPhase())) {
-                                    hasDPhase = true;
-                                    Log.d("UserDataActivity", "找到D相用户: " + userId);
-                                    
-                                    // 获取旧三相电量数据
-                                    double oldPhaseA = (double) adjustment.get("phaseAPower");
-                                    double oldPhaseB = (double) adjustment.get("phaseBPower");
-                                    double oldPhaseC = (double) adjustment.get("phaseCPower");
-                                    
-                                    // 获取新三相电量数据
-                                    double newPhaseA = userData.getPhaseAPower();
-                                    double newPhaseB = userData.getPhaseBPower();
-                                    double newPhaseC = userData.getPhaseCPower();
-                                    
-                                    Log.d("UserDataActivity", String.format(
-                                        "旧电量 - A: %.2f, B: %.2f, C: %.2f", 
-                                        oldPhaseA, oldPhaseB, oldPhaseC));
-                                    Log.d("UserDataActivity", String.format(
-                                        "新电量 - A: %.2f, B: %.2f, C: %.2f", 
-                                        newPhaseA, newPhaseB, newPhaseC));
-                                    
-                                    // 检查是否为顺时针移动一步 (A->B, B->C, C->A)
-                                    boolean isClockwise1Step = 
-                                        Math.abs(newPhaseA - oldPhaseC) < 0.1 * Math.max(0.1, oldPhaseC) && 
-                                        Math.abs(newPhaseB - oldPhaseA) < 0.1 * Math.max(0.1, oldPhaseA) && 
-                                        Math.abs(newPhaseC - oldPhaseB) < 0.1 * Math.max(0.1, oldPhaseB);
-                                    
-                                    // 检查是否为顺时针移动两步 (A->C, B->A, C->B)
-                                    boolean isClockwise2Steps = 
-                                        Math.abs(newPhaseA - oldPhaseB) < 0.1 * Math.max(0.1, oldPhaseB) && 
-                                        Math.abs(newPhaseB - oldPhaseC) < 0.1 * Math.max(0.1, oldPhaseC) && 
-                                        Math.abs(newPhaseC - oldPhaseA) < 0.1 * Math.max(0.1, oldPhaseA);
-                                    
-                                    if (isClockwise1Step) {
-                                        dPhaseSteps = 1;
-                                        Log.d("UserDataActivity", "检测到D相用户顺时针移动1步");
-                                        
-                                        // 调整三相电量计算 - 考虑对总电量的影响
-                                        Log.d("UserDataActivity", String.format(
-                                            "调整前电量 - A相: %.2f, B相: %.2f, C相: %.2f", 
-                                            beforePhaseA, beforePhaseB, beforePhaseC));
-                                            
-                                        // A相总电量减去旧的C相电量，加上新的B相电量
-                                        beforePhaseA = beforePhaseA - oldPhaseC + newPhaseB;
-                                        // 其他相位也需要相应调整
-                                        beforePhaseB = beforePhaseB - oldPhaseA + newPhaseC;
-                                        beforePhaseC = beforePhaseC - oldPhaseB + newPhaseA;
-                                        
-                                        Log.d("UserDataActivity", String.format(
-                                            "D相调整后电量 - A相: %.2f, B相: %.2f, C相: %.2f", 
-                                            beforePhaseA, beforePhaseB, beforePhaseC));
-                                    }
-                                    else if (isClockwise2Steps) {
-                                        dPhaseSteps = 2;
-                                        Log.d("UserDataActivity", "检测到D相用户顺时针移动2步");
-                                        
-                                        // 调整三相电量计算 - 考虑对总电量的影响
-                                        Log.d("UserDataActivity", String.format(
-                                            "调整前电量 - A相: %.2f, B相: %.2f, C相: %.2f", 
-                                            beforePhaseA, beforePhaseB, beforePhaseC));
-                                            
-                                        // A相总电量减去旧的B相电量，加上新的C相电量
-                                        beforePhaseA = beforePhaseA - oldPhaseB + newPhaseC;
-                                        // 其他相位也需要相应调整
-                                        beforePhaseB = beforePhaseB - oldPhaseC + newPhaseA;
-                                        beforePhaseC = beforePhaseC - oldPhaseA + newPhaseB;
-                                        
-                                        Log.d("UserDataActivity", String.format(
-                                            "D相调整后电量(顺时针2步) - A相: %.2f, B相: %.2f, C相: %.2f", 
-                                            beforePhaseA, beforePhaseB, beforePhaseC));
-                                    }
-                                    break;
-                                }
-                            }
-                            
-                            // 根据调整前后的相位变化反向计算原始电量
-                            for (String userId : adjustedUsers) 
-                            {
-                                Map<String, Object> adjustment = dbHelper.getUserPhaseAdjustment(userId, currentDate);
-                                if (adjustment != null) 
-                                {
-                                    String oldPhase = (String) adjustment.get("oldPhase");
-                                    String newPhase = (String) adjustment.get("newPhase");
-                                    
-                                    // 获取用户当前的电量
-                                    UserData userData = getUserDataById(userId);
-                                    if (userData != null)
-                                    {
-                                        double userPower = 0;
-                                        
-                                        // 计算该用户的总用电量
-                                        userPower = userData.getPhaseAPower() + userData.getPhaseBPower() + userData.getPhaseCPower();
-                                        
-                                        Log.d("UserDataActivity", String.format(
-                                            "用户ID: %s, 旧相位: %s, 新相位: %s, 电量: %.2f",
-                                            userId, oldPhase, newPhase, userPower));
-                                        Log.d("UserDataActivity", String.format(
-                                            "用户三相电量 - A相: %.2f, B相: %.2f, C相: %.2f",
-                                            userData.getPhaseAPower(), userData.getPhaseBPower(), userData.getPhaseCPower()));
-                                        
-                                        // 从现在的相位减去电量
-                                        double beforeA = beforePhaseA;
-                                        double beforeB = beforePhaseB;
-                                        double beforeC = beforePhaseC;
-                                        
-                                        // 使用if-else结构代替switch
-                                        if ("A".equals(newPhase)) {
-                                            beforePhaseA -= userPower;
-                                        } else if ("B".equals(newPhase)) {
-                                            beforePhaseB -= userPower;
-                                        } else if ("C".equals(newPhase)) {
-                                            beforePhaseC -= userPower;
-                                        } else {
-                                            Log.e("UserDataActivity", "错误的新相位值: " + newPhase);
-                                        }
-                                        
-                                        // 给原来的相位加上电量
-                                        if ("A".equals(oldPhase)) {
-                                            beforePhaseA += userPower;
-                                        } else if ("B".equals(oldPhase)) {
-                                            beforePhaseB += userPower;
-                                        } else if ("C".equals(oldPhase)) {
-                                            beforePhaseC += userPower;
-                                        } else {
-                                            Log.e("UserDataActivity", "错误的旧相位值: " + oldPhase);
-                                        }
-                                        
-                                        Log.d("UserDataActivity", String.format(
-                                            "计算中 - 用户: %s, 减去 %s相: %.2f, 加上 %s相: %.2f", 
-                                            userId, newPhase, userPower, oldPhase, userPower));
-                                        Log.d("UserDataActivity", String.format(
-                                            "修正后电量 - A相: %.2f (变化: %.2f), B相: %.2f (变化: %.2f), C相: %.2f (变化: %.2f)",
-                                            beforePhaseA, beforePhaseA - beforeA,
-                                            beforePhaseB, beforePhaseB - beforeB,
-                                            beforePhaseC, beforePhaseC - beforeC));
-                                    }
-                                }
-                                else
-                                {
-                                    Log.d("UserDataActivity", "未找到用户" + userId + "的相位调整记录");
-                                }
-                            }
+                            double beforePhaseA = adjustmentTotalPowers[0];
+                            double beforePhaseB = adjustmentTotalPowers[1];
+                            double beforePhaseC = adjustmentTotalPowers[2];
                             
                             Log.d("UserDataActivity", String.format(
-                                "最终计算得到调整前电量 - A相: %.2f, B相: %.2f, C相: %.2f", 
+                                "从数据库获取调整前电量数据 - 当前日期: %s", currentDate));
+                            Log.d("UserDataActivity", String.format(
+                                "调整前电量 - A相: %.2f, B相: %.2f, C相: %.2f",
                                 beforePhaseA, beforePhaseB, beforePhaseC));
                             
                             // 保存到缓存
@@ -495,17 +339,12 @@ public class UserDataActivity extends AppCompatActivity
                             beforePhaseCache.put("A", beforePhaseA);
                             beforePhaseCache.put("B", beforePhaseB);
                             beforePhaseCache.put("C", beforePhaseC);
-                            if (hasDPhase) {
-                                beforePhaseCache.put("D_STEPS", (double)dPhaseSteps);
-                            }
                         }
                         
                         // 从缓存读取
                         final double beforePhaseA = beforePhaseCache.get("A");
                         final double beforePhaseB = beforePhaseCache.get("B");
                         final double beforePhaseC = beforePhaseCache.get("C");
-                        final boolean hasDPhase = beforePhaseCache.containsKey("D_STEPS");
-                        final int dPhaseSteps = hasDPhase ? beforePhaseCache.get("D_STEPS").intValue() : 0;
                         
                         // 计算调整前的假设线路损耗
                         final double beforeLossCoefficient = PowerLossCalculator.calculateLineLossCoefficient(
@@ -521,25 +360,13 @@ public class UserDataActivity extends AppCompatActivity
                         final double finalOptimizationRatio = optimizationRatio;
                         runOnUiThread(() -> {
                             // 更新UI显示
-                            String updatedInfo;
-                            if (hasDPhase) {
-                                updatedInfo = String.format(
-                                    "三相总电量：\nA相：%.2f\nB相：%.2f\nC相：%.2f\n三相不平衡度：%.2f%% (%s)\n" +
-                                    "线路损耗：%.5f × R/U² kWh\n" +
-                                    "线路损耗优化比：%.2f%%\n" +
-                                    "D相顺时针移动步数：%d",
-                                    phaseA, phaseB, phaseC, unbalanceRate, status,
-                                    lossCoefficient, finalOptimizationRatio, dPhaseSteps
-                                );
-                            } else {
-                                updatedInfo = String.format(
-                                    "三相总电量：\nA相：%.2f\nB相：%.2f\nC相：%.2f\n三相不平衡度：%.2f%% (%s)\n" +
-                                    "线路损耗：%.5f × R/U² kWh\n" +
-                                    "线路损耗优化比：%.2f%%",
-                                    phaseA, phaseB, phaseC, unbalanceRate, status,
-                                    lossCoefficient, finalOptimizationRatio
-                                );
-                            }
+                            String updatedInfo = String.format(
+                                "三相总电量：\nA相：%.2f\nB相：%.2f\nC相：%.2f\n三相不平衡度：%.2f%% (%s)\n" +
+                                "线路损耗：%.5f × R/U² kWh\n" +
+                                "线路损耗优化比：%.2f%%",
+                                phaseA, phaseB, phaseC, unbalanceRate, status,
+                                lossCoefficient, finalOptimizationRatio
+                            );
                             
                             // 设置可点击的文本
                             updateClickableSpans(updatedInfo, phaseA, phaseB, phaseC, beforePhaseA, beforePhaseB, beforePhaseC);
@@ -550,7 +377,7 @@ public class UserDataActivity extends AppCompatActivity
                     } catch (Exception e) {
                         e.printStackTrace();
                         runOnUiThread(() -> {
-                            Toast.makeText(UserDataActivity.this, "计算优化比例时出错: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            Toast.makeText(UserDataActivity.this, "获取优化比例时出错: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                             isCalculating = false;
                         });
                     }

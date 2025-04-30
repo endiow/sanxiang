@@ -427,6 +427,22 @@ public class PhaseAdjustmentStrategyActivity extends AppCompatActivity
                 db.beginTransaction();
                 
                 try {
+                    // 计算调整前的三相电量和
+                    double totalASum = 0.0, totalBSum = 0.0, totalCSum = 0.0;
+                    // 获取所有用户在最新日期的数据
+                    List<UserData> allUserData = dbHelper.getUserDataByDate(latestDate);
+                    if (allUserData != null && !allUserData.isEmpty()) {
+                        for (UserData userData : allUserData) {
+                            totalASum += userData.getPhaseAPower();
+                            totalBSum += userData.getPhaseBPower();
+                            totalCSum += userData.getPhaseCPower();
+                        }
+                        Log.d(TAG, String.format(
+                            "调整前三相电量和: A=%.2f, B=%.2f, C=%.2f",
+                            totalASum, totalBSum, totalCSum
+                        ));
+                    }
+                    
                     // 逐个用户更新相位
                     for (int i = 0; i < adjustedUsers.size(); i++) {
                         User user = adjustedUsers.get(i);
@@ -489,6 +505,10 @@ public class PhaseAdjustmentStrategyActivity extends AppCompatActivity
                             oldDataValues.put("phase_b_power", oldPhaseB);
                             oldDataValues.put("phase_c_power", oldPhaseC);
                             oldDataValues.put("is_power_user", isPowerUser ? 1 : 0);
+                            // 存储调整前的三相电量和
+                            oldDataValues.put("total_a_sum", totalASum);
+                            oldDataValues.put("total_b_sum", totalBSum);
+                            oldDataValues.put("total_c_sum", totalCSum);
                             
                             // 插入或替换旧数据记录
                             db.insertWithOnConflict(

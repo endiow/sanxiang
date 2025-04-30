@@ -110,6 +110,9 @@ public class DatabaseHelper extends SQLiteOpenHelper
             COLUMN_PHASE_B_POWER + " REAL, " +  // 调整前B相电量
             COLUMN_PHASE_C_POWER + " REAL, " +  // 调整前C相电量
             "is_power_user INTEGER, " +         // 是否为动力用户
+            "total_a_sum REAL, " +              // 调整前所有用户A相电量和
+            "total_b_sum REAL, " +              // 调整前所有用户B相电量和
+            "total_c_sum REAL, " +              // 调整前所有用户C相电量和
             "PRIMARY KEY (" + COLUMN_DATE + ", " + COLUMN_USER_ID + "))";
 
 
@@ -159,88 +162,8 @@ public class DatabaseHelper extends SQLiteOpenHelper
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion)
     {
-        try
-        {
-            Log.d("DatabaseHelper", "正在从版本 " + oldVersion + " 升级到版本 " + newVersion);
-            
-            // 检查旧数据表是否存在
-            Cursor cursor = db.rawQuery(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-                new String[]{TABLE_OLD_DATA}
-            );
-            
-            boolean tableExists = cursor != null && cursor.moveToFirst();
-            cursor.close();
-            
-            // 如果旧数据表不存在，创建它
-            if (!tableExists)
-            {
-                Log.d("DatabaseHelper", "创建旧数据表");
-                db.execSQL(CREATE_OLD_DATA_TABLE);
-            }
-            else
-            {
-                // 检查旧数据表的列结构
-                cursor = db.rawQuery("PRAGMA table_info(" + TABLE_OLD_DATA + ")", null);
-                boolean hasPhaseAPower = false;
-                boolean hasPhaseBPower = false;
-                boolean hasPhaseCPower = false;
-                boolean hasIsPowerUser = false;
-                
-                if (cursor != null)
-                {
-                    while (cursor.moveToNext())
-                    {
-                        String columnName = cursor.getString(cursor.getColumnIndex("name"));
-                        if (COLUMN_PHASE_A_POWER.equals(columnName)) hasPhaseAPower = true;
-                        if (COLUMN_PHASE_B_POWER.equals(columnName)) hasPhaseBPower = true;
-                        if (COLUMN_PHASE_C_POWER.equals(columnName)) hasPhaseCPower = true;
-                        if ("is_power_user".equals(columnName)) hasIsPowerUser = true;
-                    }
-                    cursor.close();
-                }
-                
-                // 如果缺少任何新增列，更新旧数据表结构
-                if (!hasPhaseAPower || !hasPhaseBPower || !hasPhaseCPower || !hasIsPowerUser)
-                {
-                    Log.d("DatabaseHelper", "更新旧数据表结构");
-                    
-                    // 创建临时表
-                    db.execSQL("CREATE TABLE old_data_temp (" +
-                        COLUMN_DATE + " TEXT, " +
-                        COLUMN_USER_ID + " TEXT, " +
-                        COLUMN_OLD_PHASE + " TEXT, " +
-                        COLUMN_NEW_PHASE + " TEXT, " +
-                        COLUMN_PHASE_A_POWER + " REAL, " +
-                        COLUMN_PHASE_B_POWER + " REAL, " +
-                        COLUMN_PHASE_C_POWER + " REAL, " +
-                        "is_power_user INTEGER, " +
-                        "PRIMARY KEY (" + COLUMN_DATE + ", " + COLUMN_USER_ID + "))");
-                    
-                    // 复制数据
-                    db.execSQL("INSERT INTO old_data_temp(" +
-                        COLUMN_DATE + ", " + COLUMN_USER_ID + ", " +
-                        COLUMN_OLD_PHASE + ", " + COLUMN_NEW_PHASE +
-                        ") SELECT " +
-                        COLUMN_DATE + ", " + COLUMN_USER_ID + ", " +
-                        COLUMN_OLD_PHASE + ", " + COLUMN_NEW_PHASE +
-                        " FROM " + TABLE_OLD_DATA);
-                    
-                    // 删除旧表
-                    db.execSQL("DROP TABLE " + TABLE_OLD_DATA);
-                    
-                    // 重命名临时表
-                    db.execSQL("ALTER TABLE old_data_temp RENAME TO " + TABLE_OLD_DATA);
-                }
-            }
-            
-            Log.d("DatabaseHelper", "数据库升级完成");
-        }
-        catch (Exception e)
-        {
-            Log.e("DatabaseHelper", "数据库升级失败: " + e.getMessage());
-            e.printStackTrace();
-        }
+        // 留空
+        Log.d("DatabaseHelper", "数据库版本从 " + oldVersion + " 升级到 " + newVersion);
     }
 
     //-----------------------------------修改时间表函数-----------------------------------
@@ -713,6 +636,9 @@ public class DatabaseHelper extends SQLiteOpenHelper
             COLUMN_PHASE_B_POWER + " REAL, " +  // 调整前B相电量
             COLUMN_PHASE_C_POWER + " REAL, " +  // 调整前C相电量
             "is_power_user INTEGER, " +         // 是否为动力用户
+            "total_a_sum REAL, " +              // 调整前所有用户A相电量和
+            "total_b_sum REAL, " +              // 调整前所有用户B相电量和
+            "total_c_sum REAL, " +              // 调整前所有用户C相电量和
             "PRIMARY KEY (" + COLUMN_DATE + ", " + COLUMN_USER_ID + "))";
         db.execSQL(createOldPhaseTableSQL);
         
@@ -1633,7 +1559,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
                 new String[]{
                     COLUMN_DATE, COLUMN_OLD_PHASE, COLUMN_NEW_PHASE,
                     COLUMN_PHASE_A_POWER, COLUMN_PHASE_B_POWER, COLUMN_PHASE_C_POWER,
-                    "is_power_user"
+                    "is_power_user", "total_a_sum", "total_b_sum", "total_c_sum"
                 },
                 COLUMN_USER_ID + "=?",
                 new String[]{userId},
@@ -1653,6 +1579,19 @@ public class DatabaseHelper extends SQLiteOpenHelper
                     record.put("phaseBPower", cursor.getDouble(cursor.getColumnIndex(COLUMN_PHASE_B_POWER)));
                     record.put("phaseCPower", cursor.getDouble(cursor.getColumnIndex(COLUMN_PHASE_C_POWER)));
                     record.put("isPowerUser", cursor.getInt(cursor.getColumnIndex("is_power_user")) == 1);
+                    
+                    // 获取调整前三相电量和
+                    int totalAIndex = cursor.getColumnIndex("total_a_sum");
+                    int totalBIndex = cursor.getColumnIndex("total_b_sum");
+                    int totalCIndex = cursor.getColumnIndex("total_c_sum");
+                    
+                    if (totalAIndex >= 0 && totalBIndex >= 0 && totalCIndex >= 0)
+                    {
+                        record.put("totalASum", cursor.getDouble(totalAIndex));
+                        record.put("totalBSum", cursor.getDouble(totalBIndex));
+                        record.put("totalCSum", cursor.getDouble(totalCIndex));
+                    }
+                    
                     history.add(record);
                 } while (cursor.moveToNext());
             }
@@ -1720,7 +1659,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
                 new String[]{
                     COLUMN_OLD_PHASE, COLUMN_NEW_PHASE, 
                     COLUMN_PHASE_A_POWER, COLUMN_PHASE_B_POWER, COLUMN_PHASE_C_POWER,
-                    "is_power_user"
+                    "is_power_user", "total_a_sum", "total_b_sum", "total_c_sum"
                 },
                 COLUMN_DATE + "=? AND " + COLUMN_USER_ID + "=?",
                 new String[]{date, userId},
@@ -1735,6 +1674,19 @@ public class DatabaseHelper extends SQLiteOpenHelper
                 result.put("phaseBPower", cursor.getDouble(cursor.getColumnIndex(COLUMN_PHASE_B_POWER)));
                 result.put("phaseCPower", cursor.getDouble(cursor.getColumnIndex(COLUMN_PHASE_C_POWER)));
                 result.put("isPowerUser", cursor.getInt(cursor.getColumnIndex("is_power_user")) == 1);
+                
+                // 获取调整前三相电量和
+                int totalAIndex = cursor.getColumnIndex("total_a_sum");
+                int totalBIndex = cursor.getColumnIndex("total_b_sum");
+                int totalCIndex = cursor.getColumnIndex("total_c_sum");
+                
+                if (totalAIndex >= 0 && totalBIndex >= 0 && totalCIndex >= 0)
+                {
+                    result.put("totalASum", cursor.getDouble(totalAIndex));
+                    result.put("totalBSum", cursor.getDouble(totalBIndex));
+                    result.put("totalCSum", cursor.getDouble(totalCIndex));
+                }
+                
                 return result;
             }
             return null;
@@ -1748,7 +1700,52 @@ public class DatabaseHelper extends SQLiteOpenHelper
             db.close();
         }
     }
-
+    
+    // 获取指定日期调整前的三相电量和
+    public double[] getAdjustmentTotalPowers(String date)
+    {
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = null;
+        double[] totalPowers = new double[3]; // [A相总和, B相总和, C相总和]
+        
+        try
+        {
+            // 获取该日期任意一条记录即可，因为所有记录都存储了相同的三相电量和
+            cursor = db.query(
+                TABLE_OLD_DATA,
+                new String[]{"total_a_sum", "total_b_sum", "total_c_sum"},
+                COLUMN_DATE + "=?",
+                new String[]{date},
+                null, null, null,
+                "1" // 限制结果为1条
+            );
+            
+            if (cursor != null && cursor.moveToFirst())
+            {
+                int totalAIndex = cursor.getColumnIndex("total_a_sum");
+                int totalBIndex = cursor.getColumnIndex("total_b_sum");
+                int totalCIndex = cursor.getColumnIndex("total_c_sum");
+                
+                if (totalAIndex >= 0 && totalBIndex >= 0 && totalCIndex >= 0)
+                {
+                    totalPowers[0] = cursor.getDouble(totalAIndex);
+                    totalPowers[1] = cursor.getDouble(totalBIndex);
+                    totalPowers[2] = cursor.getDouble(totalCIndex);
+                }
+            }
+            
+            return totalPowers;
+        }
+        finally
+        {
+            if (cursor != null)
+            {
+                cursor.close();
+            }
+            db.close();
+        }
+    }
+    
     // 获取用户在指定日期的动力用户状态
     public boolean getPowerUserStatus(String userId, String date)
     {
