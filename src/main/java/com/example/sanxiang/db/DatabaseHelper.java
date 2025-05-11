@@ -760,6 +760,33 @@ public class DatabaseHelper extends SQLiteOpenHelper
                     oldDataValues.put(COLUMN_PHASE_C_POWER, oldPhaseC);
                     oldDataValues.put("is_power_user", wasOldPowerUser ? 1 : 0);  // 记录旧的动力用户状态
                     
+                    // 获取该日期的三相总电量和
+                    Cursor totalCursor = db.query(
+                        TABLE_TOTAL_POWER,
+                        new String[]{COLUMN_TOTAL_PHASE_A, COLUMN_TOTAL_PHASE_B, COLUMN_TOTAL_PHASE_C},
+                        COLUMN_DATE + "=?",
+                        new String[]{userData.getDate()},
+                        null, null, null
+                    );
+                    
+                    if (totalCursor.moveToFirst()) {
+                        // 获取到该日期的三相电量总和
+                        double totalA = totalCursor.getDouble(totalCursor.getColumnIndex(COLUMN_TOTAL_PHASE_A));
+                        double totalB = totalCursor.getDouble(totalCursor.getColumnIndex(COLUMN_TOTAL_PHASE_B));
+                        double totalC = totalCursor.getDouble(totalCursor.getColumnIndex(COLUMN_TOTAL_PHASE_C));
+                        
+                        // 将三相总电量和保存到旧数据记录中
+                        oldDataValues.put("total_a_sum", totalA);
+                        oldDataValues.put("total_b_sum", totalB);
+                        oldDataValues.put("total_c_sum", totalC);
+                        
+                        Log.d("DatabaseHelper", String.format(
+                            "保存调整前三相总电量和 - 用户ID:%s, 日期:%s, A相:%.2f, B相:%.2f, C相:%.2f",
+                            userId, userData.getDate(), totalA, totalB, totalC
+                        ));
+                    }
+                    totalCursor.close();
+                    
                     // 插入或替换旧数据记录
                     db.insertWithOnConflict(
                         TABLE_OLD_DATA,
@@ -811,6 +838,33 @@ public class DatabaseHelper extends SQLiteOpenHelper
         totalValues.put(COLUMN_UNBALANCE_RATE, unbalanceRate);
         
         db.insertWithOnConflict(TABLE_TOTAL_POWER, null, totalValues, SQLiteDatabase.CONFLICT_REPLACE);
+
+        // 检查是否有需要更新三相总电量和的旧数据记录
+        String checkQuery = "SELECT COUNT(*) FROM " + TABLE_OLD_DATA + " WHERE " + COLUMN_DATE + " = ? AND total_a_sum IS NULL";
+        Cursor checkCursor = db.rawQuery(checkQuery, new String[]{date});
+        
+        if (checkCursor.moveToFirst() && checkCursor.getInt(0) > 0) {
+            Log.d("DatabaseHelper", "发现需要更新三相总电量和的旧数据记录，日期: " + date);
+            
+            // 更新该日期所有旧数据记录的三相总电量和
+            ContentValues updateValues = new ContentValues();
+            updateValues.put("total_a_sum", totalA);
+            updateValues.put("total_b_sum", totalB);
+            updateValues.put("total_c_sum", totalC);
+            
+            int updatedRows = db.update(
+                TABLE_OLD_DATA,
+                updateValues,
+                COLUMN_DATE + " = ?",
+                new String[]{date}
+            );
+            
+            Log.d("DatabaseHelper", String.format(
+                "已更新%d条旧数据记录的三相总电量和 - A相: %.2f, B相: %.2f, C相: %.2f",
+                updatedRows, totalA, totalB, totalC
+            ));
+        }
+        checkCursor.close();
 
         // 检查总电量表的数据行数，如果超过30行，删除最早的数据
         String countQuery = "SELECT COUNT(*) FROM " + TABLE_TOTAL_POWER;
