@@ -180,7 +180,12 @@ public class UserDataAdapter extends RecyclerView.Adapter<UserDataAdapter.ViewHo
                         boolean isPowerUser = (boolean) adjustment.get("isPowerUser");
                         
                         // 设置相位信息，突出显示相位调整
-                        String phaseInfo = String.format("相位：%s → %s", oldPhase, newPhase);
+                        String phaseInfo;
+                        if (isPowerUser) {
+                            phaseInfo = "相位：D → D";  // 动力用户使用D表示，不管oldPhase和newPhase是什么
+                        } else {
+                            phaseInfo = String.format("相位：%s → %s", oldPhase, newPhase);
+                        }
                         String powerUserInfo = isPowerUser ? " [动力用户]" : "";
                         holder.tvPhaseInfo.setText(phaseInfo + powerUserInfo);
                         holder.tvPhaseInfo.setTextColor(Color.RED);
@@ -252,6 +257,10 @@ public class UserDataAdapter extends RecyclerView.Adapter<UserDataAdapter.ViewHo
         Double oldPhaseCPower = (Double) adjustment.get("phaseCPower");
         boolean isPowerUser = (boolean) adjustment.get("isPowerUser");
         
+        // 动力用户的相位显示使用D
+        String displayOldPhase = isPowerUser ? "D" : oldPhase;
+        String displayNewPhase = isPowerUser ? "D" : newPhase;
+        
         String message = String.format(
             "用户：%s (%s)\n" +
             "日期：%s\n" +
@@ -267,7 +276,7 @@ public class UserDataAdapter extends RecyclerView.Adapter<UserDataAdapter.ViewHo
             "C相：%.2f",
             userData.getUserId(), userData.getUserName(),
             currentDate,
-            oldPhase, newPhase,
+            displayOldPhase, displayNewPhase,
             isPowerUser ? "动力用户" : "普通用户",
             oldPhaseAPower, oldPhaseBPower, oldPhaseCPower,
             userData.getPhaseAPower(), userData.getPhaseBPower(), userData.getPhaseCPower()
